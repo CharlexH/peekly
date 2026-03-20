@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whoshere — Analytics</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</head>
+<body x-data="app()" x-init="init()">
+
+  <!-- Login Page -->
+  <template x-if="!token">
+    <div class="login-page">
+      <div class="login-card">
+        <h1>Whoshere</h1>
+        <p>Enter your password to access analytics.</p>
+        <form @submit.prevent="login">
+          <input type="password" x-model="password" placeholder="Password" autofocus>
+          <button type="submit" :disabled="loggingIn" x-text="loggingIn ? 'Signing in...' : 'Sign in'"></button>
+          <div class="login-error" x-show="loginError" x-text="loginError"></div>
+        </form>
+      </div>
+    </div>
+  </template>
+
+  <!-- Dashboard -->
+  <template x-if="token">
+    <div class="app">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-left">
+          <h1>Whoshere</h1>
+          <div class="realtime" x-show="realtimeCount > 0">
+            <span class="realtime-dot"></span>
+            <span x-text="realtimeCount + ' online now'"></span>
+          </div>
+        </div>
+        <div class="header-right">
+          <select x-model="selectedSite" @change="fetchAll()">
+            <template x-for="s in sites" :key="s.id">
+              <option :value="s.id" x-text="s.name"></option>
+            </template>
+          </select>
+          <select x-model="period" @change="fetchAll()">
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+          </select>
+          <button class="btn btn-sm" @click="showSiteModal = true">+ Site</button>
+          <button class="logout-btn" @click="logout">Logout</button>
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="label">Visitors</div>
+          <div class="value accent" x-text="fmt(summary.visitors)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Pageviews</div>
+          <div class="value" x-text="fmt(summary.pageviews)"></div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Bounce Rate</div>
+          <div class="value" x-text="summary.bounce_rate + '%'"></div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Avg. Duration</div>
+          <div class="value" x-text="fmtDuration(summary.avg_duration)"></div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>Traffic</h3>
+        </div>
+        <div class="chart-container">
+          <canvas x-ref="chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Tables -->
+      <div class="tables-grid">
+        <!-- Pages -->
+        <div class="table-card">
+          <h3>Top Pages</h3>
+          <table>
+            <thead><tr><th>Page</th><th>Views</th></tr></thead>
+            <tbody>
+              <template x-for="p in pages" :key="p.path">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(p.views, pages) + '%'"></div>
+                    <span class="bar-text" x-text="p.path"></span>
+                  </td>
+                  <td x-text="fmt(p.views)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="pages.length === 0">No data yet</div>
+        </div>
+
+        <!-- Referrers -->
+        <div class="table-card">
+          <h3>Sources</h3>
+          <table>
+            <thead><tr><th>Referrer</th><th>Views</th></tr></thead>
+            <tbody>
+              <template x-for="r in referrers" :key="r.source">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(r.views, referrers) + '%'"></div>
+                    <span class="bar-text" x-text="r.source"></span>
+                  </td>
+                  <td x-text="fmt(r.views)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="referrers.length === 0">No data yet</div>
+        </div>
+
+        <!-- Countries -->
+        <div class="table-card">
+          <h3>Countries</h3>
+          <table>
+            <thead><tr><th>Country</th><th>Visitors</th></tr></thead>
+            <tbody>
+              <template x-for="c in countries" :key="c.country">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(c.visitors, countries, 'visitors') + '%'"></div>
+                    <span class="bar-text" x-text="c.country"></span>
+                  </td>
+                  <td x-text="fmt(c.visitors)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="countries.length === 0">No data yet</div>
+        </div>
+
+        <!-- Browsers -->
+        <div class="table-card">
+          <h3>Browsers</h3>
+          <table>
+            <thead><tr><th>Browser</th><th>Count</th></tr></thead>
+            <tbody>
+              <template x-for="b in browsers" :key="b.name">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(b.count, browsers, 'count') + '%'"></div>
+                    <span class="bar-text" x-text="b.name"></span>
+                  </td>
+                  <td x-text="fmt(b.count)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="browsers.length === 0">No data yet</div>
+        </div>
+
+        <!-- OS -->
+        <div class="table-card">
+          <h3>Operating Systems</h3>
+          <table>
+            <thead><tr><th>OS</th><th>Count</th></tr></thead>
+            <tbody>
+              <template x-for="o in osData" :key="o.name">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(o.count, osData, 'count') + '%'"></div>
+                    <span class="bar-text" x-text="o.name"></span>
+                  </td>
+                  <td x-text="fmt(o.count)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="osData.length === 0">No data yet</div>
+        </div>
+
+        <!-- Devices -->
+        <div class="table-card">
+          <h3>Devices</h3>
+          <table>
+            <thead><tr><th>Type</th><th>Count</th></tr></thead>
+            <tbody>
+              <template x-for="d in devices" :key="d.device">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(d.count, devices, 'count') + '%'"></div>
+                    <span class="bar-text" x-text="d.device"></span>
+                  </td>
+                  <td x-text="fmt(d.count)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="devices.length === 0">No data yet</div>
+        </div>
+      </div>
+
+      <!-- Add Site Modal -->
+      <template x-if="showSiteModal">
+        <div class="modal-overlay" @click.self="showSiteModal = false">
+          <div class="modal">
+            <h3>Add Site</h3>
+            <input type="text" x-model="newSiteName" placeholder="Site name (e.g., My Blog)">
+            <input type="text" x-model="newSiteDomain" placeholder="Domain (e.g., myblog.com)">
+            <div class="modal-actions">
+              <button class="btn" @click="showSiteModal = false">Cancel</button>
+              <button class="btn btn-accent" @click="addSite" :disabled="!newSiteName || !newSiteDomain">Add</button>
+            </div>
+            <template x-if="newSiteSnippet">
+              <div style="margin-top:16px">
+                <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">Tracking snippet:</div>
+                <div class="snippet" x-text="newSiteSnippet"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>
