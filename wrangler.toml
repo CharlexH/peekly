@@ -9,7 +9,7 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "peekly"
-database_id = "local"
+database_id = "b4123e02-0514-4b4f-88b5-49522252d3c5"
 
 [vars]
 APP_NAME = "Peekly"
