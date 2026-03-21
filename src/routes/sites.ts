@@ -17,7 +17,7 @@ sitesRoute.post("/", async (c) => {
   }
 
   const id = nanoid(12);
-  const trackingId = `wh_${nanoid(8)}`;
+  const trackingId = `pk_${nanoid(8)}`;
 
   await c.env.DB.prepare(
     "INSERT INTO sites (id, name, domain, tracking_id) VALUES (?, ?, ?, ?)"

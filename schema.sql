@@ -1,4 +1,4 @@
--- Whoshere Analytics Schema
+-- Peekly Analytics Schema
 
 CREATE TABLE IF NOT EXISTS sites (
   id TEXT PRIMARY KEY,

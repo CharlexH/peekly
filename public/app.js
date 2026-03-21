@@ -1,7 +1,7 @@
 function app() {
   return {
     // Auth
-    token: localStorage.getItem('wh_token') || '',
+    token: localStorage.getItem('pk_token') || '',
     password: '',
     loggingIn: false,
     loginError: '',
@@ -53,7 +53,7 @@ function app() {
           return;
         }
         this.token = data.token;
-        localStorage.setItem('wh_token', data.token);
+        localStorage.setItem('pk_token', data.token);
         this.password = '';
         await this.init();
       } catch (e) {
@@ -65,7 +65,7 @@ function app() {
 
     logout() {
       this.token = '';
-      localStorage.removeItem('wh_token');
+      localStorage.removeItem('pk_token');
     },
 
     headers() {

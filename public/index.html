@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Whoshere — Analytics</title>
+  <title>Peekly — Analytics</title>
   <link rel="stylesheet" href="/style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
 </head>
@@ -13,7 +13,7 @@
   <template x-if="!token">
     <div class="login-page">
       <div class="login-card">
-        <h1>Whoshere</h1>
+        <h1>Peekly</h1>
         <p>Enter your password to access analytics.</p>
         <form @submit.prevent="login">
           <input type="password" x-model="password" placeholder="Password" autofocus>
@@ -30,7 +30,7 @@
       <!-- Header -->
       <div class="header">
         <div class="header-left">
-          <h1>Whoshere</h1>
+          <h1>Peekly</h1>
           <div class="realtime" x-show="realtimeCount > 0">
             <span class="realtime-dot"></span>
             <span x-text="realtimeCount + ' online now'"></span>

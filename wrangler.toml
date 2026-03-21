@@ -1,4 +1,4 @@
-name = "whoshere"
+name = "peekly"
 main = "src/index.ts"
 compatibility_date = "2025-03-01"
 
@@ -8,8 +8,8 @@ not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "whoshere"
+database_name = "peekly"
 database_id = "local"
 
 [vars]
-APP_NAME = "Whoshere"
+APP_NAME = "Peekly"

@@ -30,5 +30,5 @@ var hp=history.pushState;
 history.pushState=function(){hp.apply(this,arguments);t('pageview');ps=Date.now()};
 w.addEventListener('popstate',function(){t('pageview');ps=Date.now()});
 t('pageview');
-w.whoshere=function(name,meta){t(name,meta)};
+w.peekly=function(name,meta){t(name,meta)};
 })();`;

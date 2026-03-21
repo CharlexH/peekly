@@ -1,4 +1,4 @@
-# Whoshere
+# Peekly
 
 Self-hosted, privacy-friendly web analytics. Built on Cloudflare Workers + D1.
 
@@ -42,15 +42,15 @@ Dashboard (Alpine.js SPA) ← GET /api/stats/* ← JWT auth middleware
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/CharlexH/whoshere.git
-cd whoshere
+git clone https://github.com/CharlexH/peekly.git
+cd peekly
 npm install
 ```
 
 ### 2. Create D1 database
 
 ```bash
-npx wrangler d1 create whoshere
+npx wrangler d1 create peekly
 ```
 
 Copy the `database_id` from the output into `wrangler.toml`.
@@ -59,12 +59,12 @@ Copy the `database_id` from the output into `wrangler.toml`.
 
 ```bash
 # Local
-npx wrangler d1 execute whoshere --local --file=./schema.sql
-npx wrangler d1 execute whoshere --local --file=./seed.sql
+npx wrangler d1 execute peekly --local --file=./schema.sql
+npx wrangler d1 execute peekly --local --file=./seed.sql
 
 # Remote (after first deploy)
-npx wrangler d1 execute whoshere --remote --file=./schema.sql
-npx wrangler d1 execute whoshere --remote --file=./seed.sql
+npx wrangler d1 execute peekly --remote --file=./schema.sql
+npx wrangler d1 execute peekly --remote --file=./seed.sql
 ```
 
 ### 4. Set secrets
@@ -127,11 +127,11 @@ After creating a site in the dashboard, add this to your website's `<head>`:
 
 ```javascript
 // Track a custom event
-whoshere("signup", { plan: "pro" });
+peekly("signup", { plan: "pro" });
 
 // Track a button click
 document.querySelector("#cta").addEventListener("click", () => {
-  whoshere("cta_click");
+  peekly("cta_click");
 });
 ```
 

@@ -1,5 +1,5 @@
 {
-  "name": "whoshere",
+  "name": "peekly",
   "version": "1.0.0",
   "description": "Self-hosted, privacy-friendly web analytics",
   "type": "module",
@@ -9,8 +9,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:tracker": "node scripts/build-tracker.js",
-    "db:init": "wrangler d1 execute whoshere --local --file=./schema.sql",
-    "db:seed": "wrangler d1 execute whoshere --local --file=./seed.sql"
+    "db:init": "wrangler d1 execute peekly --local --file=./schema.sql",
+    "db:seed": "wrangler d1 execute peekly --local --file=./seed.sql"
   },
   "dependencies": {
     "hono": "^4.7.0"
