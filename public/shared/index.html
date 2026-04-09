@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peekly — Public Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+</head>
+<body x-data="publicDash()" x-init="init()" data-theme="dark">
+
+  <div class="app" x-show="loaded">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <h1 x-text="siteName || 'Peekly'"></h1>
+        <span style="font-size:13px;color:var(--text-dim)" x-text="siteDomain"></span>
+      </div>
+      <div class="header-right">
+        <select x-model="period" @change="fetchAll()">
+          <option value="today">Today</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d" selected>Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="label">Visitors</div>
+        <div class="value accent">
+          <span x-text="fmt(summary.visitors)"></span>
+          <span class="delta" :class="deltaClass(summary.compare?.visitors)" x-text="fmtDelta(summary.compare?.visitors)" x-show="summary.compare?.visitors != null"></span>
+        </div>
+        <div class="sparkline-wrap"><canvas x-ref="sparkVisitors"></canvas></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Pageviews</div>
+        <div class="value">
+          <span x-text="fmt(summary.pageviews)"></span>
+          <span class="delta" :class="deltaClass(summary.compare?.pageviews)" x-text="fmtDelta(summary.compare?.pageviews)" x-show="summary.compare?.pageviews != null"></span>
+        </div>
+        <div class="sparkline-wrap"><canvas x-ref="sparkPageviews"></canvas></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Bounce Rate</div>
+        <div class="value" x-text="summary.bounce_rate + '%'"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Avg. Duration</div>
+        <div class="value" x-text="fmtDuration(summary.avg_duration)"></div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-card">
+      <div class="chart-header"><h3>Traffic</h3></div>
+      <div class="chart-container"><canvas x-ref="chart"></canvas></div>
+    </div>
+
+    <!-- Tables -->
+    <div class="tables-grid">
+      <div class="table-card">
+        <h3>Top Pages</h3>
+        <table>
+          <thead><tr><th>Page</th><th>Views</th></tr></thead>
+          <tbody>
+            <template x-for="p in pages" :key="p.path">
+              <tr>
+                <td class="bar-cell">
+                  <div class="bar-bg" :style="'width:' + pct(p.views, pages) + '%'"></div>
+                  <span class="bar-text" x-text="p.path"></span>
+                </td>
+                <td x-text="fmt(p.views)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="empty" x-show="pages.length === 0">No data yet</div>
+      </div>
+
+      <div class="table-card">
+        <h3>Sources</h3>
+        <table>
+          <thead><tr><th>Referrer</th><th>Views</th></tr></thead>
+          <tbody>
+            <template x-for="r in referrers" :key="r.source">
+              <tr>
+                <td class="bar-cell">
+                  <div class="bar-bg" :style="'width:' + pct(r.views, referrers) + '%'"></div>
+                  <span class="bar-text" x-text="r.source"></span>
+                </td>
+                <td x-text="fmt(r.views)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="empty" x-show="referrers.length === 0">No data yet</div>
+      </div>
+
+      <div class="table-card">
+        <h3>Countries</h3>
+        <table>
+          <thead><tr><th>Country</th><th>Visitors</th></tr></thead>
+          <tbody>
+            <template x-for="c in countries" :key="c.country">
+              <tr>
+                <td class="bar-cell">
+                  <div class="bar-bg" :style="'width:' + pct(c.visitors, countries, 'visitors') + '%'"></div>
+                  <span class="bar-text" x-text="c.country"></span>
+                </td>
+                <td x-text="fmt(c.visitors)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="empty" x-show="countries.length === 0">No data yet</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;padding:20px 0;color:var(--text-muted);font-size:12px">
+      Powered by <a href="https://github.com/CharlexH/peekly" style="color:var(--accent);text-decoration:none">Peekly</a>
+    </div>
+  </div>
+
+  <div class="loading" x-show="!loaded && !error">Loading...</div>
+  <div class="empty" x-show="error" x-text="error"></div>
+
+<script>
+function publicDash() {
+  const pathParts = window.location.pathname.split('/');
+  const token = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+
+  return {
+    token,
+    loaded: false,
+    error: '',
+    period: '30d',
+    siteName: '',
+    siteDomain: '',
+    summary: { visitors: 0, pageviews: 0, bounce_rate: 0, avg_duration: 0, sparkline: [], compare: {} },
+    timeseries: [],
+    pages: [],
+    referrers: [],
+    countries: [],
+
+    async init() {
+      try {
+        const info = await this.api('/info');
+        if (!info || info.error) { this.error = info?.error || 'Dashboard not found'; return; }
+        this.siteName = info.name;
+        this.siteDomain = info.domain;
+        document.title = `${info.name} — Peekly`;
+        await this.fetchAll();
+        this.loaded = true;
+      } catch (e) {
+        this.error = 'Failed to load dashboard';
+      }
+    },
+
+    async api(path) {
+      const sep = path.includes('?') ? '&' : '?';
+      const url = `/api/public/${this.token}${path}${sep}period=${this.period}`;
+      const res = await fetch(url);
+      return res.json();
+    },
+
+    async fetchAll() {
+      const [summary, timeseries, pages, referrers, countries] = await Promise.all([
+        this.api('/summary'),
+        this.api('/timeseries'),
+        this.api('/pages'),
+        this.api('/referrers'),
+        this.api('/countries'),
+      ]);
+      if (summary && !summary.error) {
+        this.summary = summary;
+        this.$nextTick(() => this.renderSparklines());
+      }
+      if (timeseries && !timeseries.error) {
+        this.timeseries = timeseries.data || [];
+        this.$nextTick(() => this.renderChart());
+      }
+      if (pages) this.pages = pages.pages || [];
+      if (referrers) this.referrers = referrers.referrers || [];
+      if (countries) this.countries = countries.countries || [];
+    },
+
+    cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); },
+
+    renderSparklines() {
+      const s = this.summary.sparkline || [];
+      if (s.length < 2) return;
+      this.drawSparkline(this.$refs.sparkVisitors, s.map(d => d.visitors));
+      this.drawSparkline(this.$refs.sparkPageviews, s.map(d => d.pageviews));
+    },
+
+    drawSparkline(canvas, values) {
+      if (!canvas || values.length < 2) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const w = rect.width, h = rect.height, max = Math.max(...values, 1), pad = 2;
+      ctx.clearRect(0, 0, w, h);
+      ctx.beginPath();
+      for (let i = 0; i < values.length; i++) {
+        const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+        const y = pad + (h - pad * 2) - (values[i] / max) * (h - pad * 2);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.lineTo(pad + (w - pad * 2), h - pad); ctx.lineTo(pad, h - pad); ctx.closePath();
+      ctx.fillStyle = this.cssVar('--sparkline-fill'); ctx.fill();
+      ctx.beginPath();
+      for (let i = 0; i < values.length; i++) {
+        const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+        const y = pad + (h - pad * 2) - (values[i] / max) * (h - pad * 2);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = this.cssVar('--sparkline'); ctx.lineWidth = 1.5; ctx.stroke();
+    },
+
+    renderChart() {
+      const canvas = this.$refs.chart;
+      if (!canvas || this.timeseries.length === 0) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const w = rect.width, h = rect.height;
+      const pad = { top: 10, right: 10, bottom: 24, left: 40 };
+      const plotW = w - pad.left - pad.right, plotH = h - pad.top - pad.bottom;
+      const data = this.timeseries, maxVal = Math.max(...data.map(d => d.visitors), 1);
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = this.cssVar('--chart-grid'); ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH * i / 4);
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        ctx.fillStyle = this.cssVar('--chart-label'); ctx.font = '10px -apple-system, sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(Math.round(maxVal * (1 - i / 4)).toString(), pad.left - 6, y + 3);
+      }
+      if (data.length < 2) return;
+      ctx.beginPath();
+      for (let i = 0; i < data.length; i++) {
+        const x = pad.left + (i / (data.length - 1)) * plotW;
+        const y = pad.top + plotH - (data[i].visitors / maxVal) * plotH;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.lineTo(pad.left + plotW, pad.top + plotH); ctx.lineTo(pad.left, pad.top + plotH); ctx.closePath();
+      ctx.fillStyle = this.cssVar('--sparkline-fill'); ctx.fill();
+      ctx.beginPath();
+      for (let i = 0; i < data.length; i++) {
+        const x = pad.left + (i / (data.length - 1)) * plotW;
+        const y = pad.top + plotH - (data[i].visitors / maxVal) * plotH;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = this.cssVar('--sparkline'); ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = this.cssVar('--chart-label'); ctx.font = '10px -apple-system, sans-serif'; ctx.textAlign = 'center';
+      const li = [0, Math.floor(data.length / 2), data.length - 1];
+      for (const i of li) {
+        const x = pad.left + (i / (data.length - 1)) * plotW;
+        const d = new Date(data[i].timestamp * 1000);
+        ctx.fillText(`${d.getMonth()+1}/${d.getDate()}`, x, h - 4);
+      }
+    },
+
+    fmt(n) { return n == null ? '0' : Number(n).toLocaleString(); },
+    fmtDuration(sec) {
+      if (!sec || sec === 0) return '0s';
+      sec = Math.round(Number(sec));
+      if (sec < 60) return sec + 's';
+      return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+    },
+    fmtDelta(val) { if (val == null) return ''; return (val > 0 ? '+' : '') + val + '%'; },
+    deltaClass(val, inv) { if (val == null || val === 0) return 'neutral'; if (inv) return val < 0 ? 'up' : 'down'; return val > 0 ? 'up' : 'down'; },
+    pct(val, arr, key) {
+      if (!arr || arr.length === 0) return 0;
+      const k = key || 'views';
+      const max = Math.max(...arr.map(i => Number(i[k]) || 0));
+      return max === 0 ? 0 : Math.round((Number(val) / max) * 100);
+    },
+  };
+}
+</script>
+</body>
+</html>

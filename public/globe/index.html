@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peekly — Live Globe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+    #globe { width: 100vw; height: 100vh; }
+    .hud {
+      position: fixed; top: 20px; left: 20px; color: #e5e5e5; z-index: 10;
+    }
+    .hud h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .hud .count { font-size: 32px; font-weight: 700; color: #B8EE41; font-variant-numeric: tabular-nums; }
+    .hud .label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hud-right {
+      position: fixed; top: 20px; right: 20px; color: #e5e5e5; z-index: 10;
+      text-align: right; font-size: 13px;
+    }
+    .hud-right .page { color: #888; margin-bottom: 2px; }
+    .back-link {
+      position: fixed; bottom: 20px; left: 20px; z-index: 10;
+      color: #666; font-size: 13px; text-decoration: none;
+    }
+    .back-link:hover { color: #B8EE41; }
+    .login-prompt {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: #000; color: #e5e5e5; z-index: 20; flex-direction: column; gap: 16px;
+    }
+    .login-prompt input {
+      padding: 10px 14px; background: #111; border: 1px solid #333; border-radius: 8px;
+      color: #e5e5e5; font-size: 14px; width: 240px; outline: none;
+    }
+    .login-prompt input:focus { border-color: #B8EE41; }
+    .login-prompt button {
+      padding: 10px 24px; background: #B8EE41; color: #000; border: none;
+      border-radius: 8px; font-weight: 600; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="login-prompt" class="login-prompt" style="display:none">
+    <h2>Peekly Globe</h2>
+    <p style="color:#888;font-size:14px">Sign in to view the live globe</p>
+    <input type="password" id="pwd" placeholder="Password" autofocus>
+    <button onclick="doLogin()">Sign in</button>
+    <div id="login-error" style="color:#ef4444;font-size:13px"></div>
+  </div>
+
+  <div id="globe-ui" style="display:none">
+    <div class="hud">
+      <h1>Peekly</h1>
+      <div class="count" id="active-count">0</div>
+      <div class="label">Active Visitors</div>
+    </div>
+    <div class="hud-right" id="recent-pages"></div>
+    <a class="back-link" href="/">← Dashboard</a>
+    <div id="globe"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ISO 3166-1 numeric → alpha-2 mapping
+    const ISO_NUM_TO_A2 = {
+      '004':'AF','008':'AL','012':'DZ','016':'AS','020':'AD','024':'AO','028':'AG','031':'AZ',
+      '032':'AR','036':'AU','040':'AT','044':'BS','048':'BH','050':'BD','051':'AM','056':'BE',
+      '064':'BT','068':'BO','070':'BA','072':'BW','076':'BR','084':'BZ','090':'SB','096':'BN',
+      '100':'BG','104':'MM','108':'BI','112':'BY','116':'KH','120':'CM','124':'CA','140':'CF',
+      '144':'LK','148':'TD','152':'CL','156':'CN','170':'CO','178':'CG','180':'CD','188':'CR',
+      '191':'HR','192':'CU','196':'CY','203':'CZ','208':'DK','262':'DJ','214':'DO','218':'EC',
+      '818':'EG','222':'SV','226':'GQ','232':'ER','233':'EE','231':'ET','242':'FJ','246':'FI',
+      '250':'FR','266':'GA','270':'GM','268':'GE','276':'DE','288':'GH','300':'GR','320':'GT',
+      '324':'GN','328':'GY','332':'HT','340':'HN','348':'HU','352':'IS','356':'IN','360':'ID',
+      '364':'IR','368':'IQ','372':'IE','376':'IL','380':'IT','388':'JM','392':'JP','400':'JO',
+      '398':'KZ','404':'KE','408':'KP','410':'KR','414':'KW','417':'KG','418':'LA','422':'LB',
+      '426':'LS','428':'LV','430':'LR','434':'LY','440':'LT','442':'LU','450':'MG','454':'MW',
+      '458':'MY','466':'ML','478':'MR','484':'MX','496':'MN','498':'MD','504':'MA','508':'MZ',
+      '512':'OM','516':'NA','524':'NP','528':'NL','540':'NC','554':'NZ','558':'NI','562':'NE',
+      '566':'NG','578':'NO','586':'PK','591':'PA','598':'PG','600':'PY','604':'PE','608':'PH',
+      '616':'PL','620':'PT','630':'PR','634':'QA','642':'RO','643':'RU','646':'RW','682':'SA',
+      '686':'SN','688':'RS','694':'SL','702':'SG','703':'SK','705':'SI','706':'SO','710':'ZA',
+      '724':'ES','729':'SD','740':'SR','752':'SE','756':'CH','760':'SY','158':'TW','762':'TJ',
+      '764':'TH','768':'TG','780':'TT','788':'TN','792':'TR','795':'TM','800':'UG','804':'UA',
+      '784':'AE','826':'GB','840':'US','858':'UY','860':'UZ','862':'VE','704':'VN','887':'YE',
+      '894':'ZM','716':'ZW','275':'PS','-99':'XK',
+    };
+
+    const COUNTRY_COORDS = {
+      US: [39.8, -98.6], CN: [35.0, 105.0], JP: [36.2, 138.3], DE: [51.2, 10.4],
+      GB: [55.4, -3.4], FR: [46.2, 2.2], BR: [-14.2, -51.9], IN: [20.6, 78.9],
+      CA: [56.1, -106.3], AU: [-25.3, 133.8], KR: [35.9, 127.8], IT: [41.9, 12.5],
+      ES: [40.5, -3.7], RU: [61.5, 105.3], MX: [23.6, -102.6], NL: [52.1, 5.3],
+      SE: [60.1, 18.6], PL: [51.9, 19.1], TR: [38.9, 35.2], AR: [-38.4, -63.6],
+      TW: [23.7, 120.9], SG: [1.3, 103.8], HK: [22.4, 114.1], TH: [15.9, 100.5],
+      MY: [4.2, 101.9], ID: [-0.8, 113.9], VN: [14.1, 108.3], PH: [12.9, 121.8],
+      ZA: [-30.6, 22.9], NG: [9.1, 8.7], EG: [26.8, 30.8], KE: [-0.0, 37.9],
+      CO: [4.6, -74.1], CL: [-35.7, -71.5], PE: [-9.2, -75.0], UA: [48.4, 31.2],
+      CZ: [49.8, 15.5], AT: [47.5, 14.6], CH: [46.8, 8.2], BE: [50.5, 4.5],
+      PT: [39.4, -8.2], DK: [56.3, 9.5], NO: [60.5, 8.5], FI: [61.9, 25.7],
+      IE: [53.1, -7.7], NZ: [-40.9, 174.9], IL: [31.0, 34.9], AE: [23.4, 53.8],
+      SA: [23.9, 45.1], RO: [45.9, 24.9], HU: [47.2, 19.5], GR: [39.1, 21.8],
+      Unknown: [0, 0],
+    };
+
+    // Load world GeoJSON
+    async function loadGeoJson() {
+      const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+      const topo = await res.json();
+      const countries = window.topojson.feature(topo, topo.objects.countries);
+      return countries.features.map(f => ({
+        ...f,
+        properties: { ...f.properties, iso_a2: ISO_NUM_TO_A2[String(f.id)] || null },
+      }));
+    }
+
+    // Build country canvas texture
+    function buildCountryTexture(geoFeatures, visitorMap, maxVisitors) {
+      const W = 2048, H = 1024;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, W, H);
+
+      function projX(lng) { return ((lng + 180) / 360) * W; }
+      function projY(lat) { return ((90 - lat) / 180) * H; }
+
+      function drawRing(coords) {
+        ctx.moveTo(projX(coords[0][0]), projY(coords[0][1]));
+        for (let i = 1; i < coords.length; i++) {
+          if (Math.abs(coords[i][0] - coords[i - 1][0]) > 90) {
+            ctx.moveTo(projX(coords[i][0]), projY(coords[i][1]));
+          } else {
+            ctx.lineTo(projX(coords[i][0]), projY(coords[i][1]));
+          }
+        }
+      }
+
+      function drawGeometry(geometry) {
+        if (geometry.type === 'Polygon') {
+          for (const ring of geometry.coordinates) drawRing(ring);
+        } else if (geometry.type === 'MultiPolygon') {
+          for (const polygon of geometry.coordinates)
+            for (const ring of polygon) drawRing(ring);
+        }
+      }
+
+      // First pass: draw all country borders — thin precise outline
+      for (const feature of geoFeatures) {
+        ctx.beginPath();
+        drawGeometry(feature.geometry);
+        ctx.strokeStyle = 'rgba(184, 238, 65, 0.35)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+
+      // Second pass: fill countries with visitors (green intensity by count)
+      for (const feature of geoFeatures) {
+        const code = feature.properties.iso_a2;
+        const visitors = (code && visitorMap[code]) || 0;
+        if (visitors <= 0) continue;
+
+        const intensity = maxVisitors > 0 ? visitors / maxVisitors : 0;
+
+        ctx.beginPath();
+        drawGeometry(feature.geometry);
+
+        const r = Math.round(60 + intensity * 124);
+        const g = Math.round(120 + intensity * 118);
+        const b = Math.round(20 + intensity * 45);
+        const alpha = 0.4 + intensity * 0.5;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(184, 238, 65, ${0.5 + intensity * 0.4})`;
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    let token = localStorage.getItem('pk_token');
+    let selectedSite = '';
+
+    if (!token) {
+      document.getElementById('login-prompt').style.display = 'flex';
+    } else {
+      startGlobe();
+    }
+
+    window.doLogin = async function() {
+      const pwd = document.getElementById('pwd').value;
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          document.getElementById('login-error').textContent = data.error || 'Login failed';
+          return;
+        }
+        token = data.token;
+        localStorage.setItem('pk_token', data.token);
+        document.getElementById('login-prompt').style.display = 'none';
+        startGlobe();
+      } catch (e) {
+        document.getElementById('login-error').textContent = 'Connection error';
+      }
+    };
+
+    async function startGlobe() {
+      document.getElementById('globe-ui').style.display = 'block';
+
+      // Get first site
+      const siteRes = await fetch('/api/sites', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const siteData = await siteRes.json();
+      if (!siteData.sites?.length) return;
+      selectedSite = siteData.sites[0].id;
+
+      // Load GeoJSON in parallel
+      const geoPromise = loadGeoJson();
+
+      // Setup Three.js
+      const container = document.getElementById('globe');
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 0, 3);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.enablePan = false;
+      controls.minDistance = 1.5;
+      controls.maxDistance = 6;
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.5;
+
+      // Wait for GeoJSON
+      const geoFeatures = await geoPromise;
+
+      // Initial empty texture
+      let countryTexture = buildCountryTexture(geoFeatures, {}, 0);
+
+      // Solid dark globe
+      const globeGeo = new THREE.SphereGeometry(1, 64, 64);
+      const globeMat = new THREE.MeshPhongMaterial({
+        color: 0x080808,
+        emissive: 0x050505,
+        specular: 0x222222,
+        shininess: 20,
+      });
+      const globe = new THREE.Mesh(globeGeo, globeMat);
+      scene.add(globe);
+
+      // Country overlay sphere — renders country polygons on the surface
+      const overlayGeo = new THREE.SphereGeometry(1.005, 64, 64);
+      const overlayMat = new THREE.MeshBasicMaterial({
+        map: countryTexture,
+        transparent: true,
+        opacity: 1.0,
+        depthWrite: false,
+      });
+      scene.add(new THREE.Mesh(overlayGeo, overlayMat));
+
+      // Latitude and longitude lines (real graticule)
+      const gridRadius = 1.008;
+      const gridMat = new THREE.LineBasicMaterial({ color: 0x3a5a30, transparent: true, opacity: 0.35 });
+
+      for (let lat = -60; lat <= 60; lat += 30) {
+        const pts = [];
+        const phi = (90 - lat) * Math.PI / 180;
+        for (let lng = 0; lng <= 360; lng += 2) {
+          const theta = (lng + 180) * Math.PI / 180;
+          pts.push(new THREE.Vector3(
+            -gridRadius * Math.sin(phi) * Math.cos(theta),
+            gridRadius * Math.cos(phi),
+            gridRadius * Math.sin(phi) * Math.sin(theta)
+          ));
+        }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        scene.add(new THREE.Line(geo, gridMat));
+      }
+
+      for (let lng = 0; lng < 360; lng += 30) {
+        const pts = [];
+        const theta = (lng + 180) * Math.PI / 180;
+        for (let lat = -90; lat <= 90; lat += 2) {
+          const phi = (90 - lat) * Math.PI / 180;
+          pts.push(new THREE.Vector3(
+            -gridRadius * Math.sin(phi) * Math.cos(theta),
+            gridRadius * Math.cos(phi),
+            gridRadius * Math.sin(phi) * Math.sin(theta)
+          ));
+        }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        scene.add(new THREE.Line(geo, gridMat));
+      }
+
+      // Lighting — neutral
+      scene.add(new THREE.AmbientLight(0x222222));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+      dirLight.position.set(5, 3, 5);
+      scene.add(dirLight);
+
+      // Point group for visitor dots
+      const pointsGroup = new THREE.Group();
+      scene.add(pointsGroup);
+      const arcsGroup = new THREE.Group();
+      scene.add(arcsGroup);
+
+      function latLngToVec3(lat, lng, radius = 1.015) {
+        const phi = (90 - lat) * Math.PI / 180;
+        const theta = (lng + 180) * Math.PI / 180;
+        return new THREE.Vector3(
+          -radius * Math.sin(phi) * Math.cos(theta),
+          radius * Math.cos(phi),
+          radius * Math.sin(phi) * Math.sin(theta)
+        );
+      }
+
+      function addDot(lat, lng) {
+        const dotGeo = new THREE.SphereGeometry(0.015, 8, 8);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0xB8EE41 });
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.copy(latLngToVec3(lat, lng));
+        dot.userData.created = Date.now();
+        pointsGroup.add(dot);
+
+        const ringGeo = new THREE.RingGeometry(0.02, 0.04, 16);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0xB8EE41, transparent: true, opacity: 0.6, side: THREE.DoubleSide,
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.copy(latLngToVec3(lat, lng));
+        ring.lookAt(new THREE.Vector3(0, 0, 0));
+        ring.userData.created = Date.now();
+        ring.userData.isRing = true;
+        pointsGroup.add(ring);
+      }
+
+      function addArc(fromLat, fromLng, toLat, toLng, delay) {
+        delay = delay || 0;
+        const created = Date.now() + delay;
+        const from = latLngToVec3(fromLat, fromLng, 1.015);
+        const to = latLngToVec3(toLat, toLng, 1.015);
+        const mid = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
+        const dist = from.distanceTo(to);
+        mid.normalize().multiplyScalar(1 + dist * 0.35);
+
+        const curve = new THREE.QuadraticBezierCurve3(from, mid, to);
+        const points = curve.getPoints(40);
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        const mat = new THREE.LineBasicMaterial({
+          color: 0xB8EE41, transparent: true, opacity: 0.0,
+        });
+        const line = new THREE.Line(geo, mat);
+        line.userData.created = created;
+        line.userData.delay = delay;
+        arcsGroup.add(line);
+      }
+
+      // Calculate distance between two lat/lng pairs
+      function geoDistance(lat1, lng1, lat2, lng2) {
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        return Math.sqrt(dLat * dLat + dLng * dLng);
+      }
+
+      // Build a hop path from origin country to CN (max 3 hops)
+      function buildPathToCN(originCode, activeCountries, COORDS) {
+        const target = COORDS['CN'];
+        if (!target) return [];
+        const origin = COORDS[originCode];
+        if (!origin) return [];
+
+        const path = [{ code: originCode, lat: origin[0], lng: origin[1] }];
+        const visited = new Set([originCode, 'CN']);
+        let current = origin;
+
+        // Find intermediate hops (max 2 intermediates, then final hop to CN)
+        const maxIntermediates = 2;
+
+        for (let hop = 0; hop < maxIntermediates; hop++) {
+          // Only add intermediate if we're far enough from CN
+          if (geoDistance(current[0], current[1], target[0], target[1]) < 30 * Math.PI / 180) break;
+
+          // Find the best intermediate: an active country closer to CN
+          let bestCode = null;
+          let bestDist = geoDistance(current[0], current[1], target[0], target[1]);
+          for (const c of activeCountries) {
+            if (visited.has(c.country) || !COORDS[c.country]) continue;
+            const coord = COORDS[c.country];
+            const dToTarget = geoDistance(coord[0], coord[1], target[0], target[1]);
+            const dFromCurrent = geoDistance(current[0], current[1], coord[0], coord[1]);
+            // Must be closer to CN than current, and not too far from current
+            if (dToTarget < bestDist && dFromCurrent < bestDist * 0.8) {
+              bestDist = dToTarget;
+              bestCode = c.country;
+            }
+          }
+          if (!bestCode) break;
+          visited.add(bestCode);
+          const coord = COORDS[bestCode];
+          path.push({ code: bestCode, lat: coord[0], lng: coord[1] });
+          current = coord;
+        }
+
+        // Final hop to CN
+        path.push({ code: 'CN', lat: target[0], lng: target[1] });
+        return path;
+      }
+
+      // Poll for data
+      let lastCountries = [];
+      async function pollData() {
+        try {
+          const res = await fetch(
+            `/api/stats/countries?site_id=${selectedSite}&period=today`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const data = await res.json();
+
+          const rtRes = await fetch(
+            `/api/stats/realtime?site_id=${selectedSite}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const rtData = await rtRes.json();
+
+          document.getElementById('active-count').textContent =
+            (rtData.active_visitors || 0).toLocaleString();
+
+          if (rtData.pages?.length) {
+            const pageContainer = document.getElementById('recent-pages');
+            pageContainer.textContent = '';
+            rtData.pages.slice(0, 5).forEach(p => {
+              const div = document.createElement('div');
+              div.className = 'page';
+              div.textContent = p.path + ' ';
+              const span = document.createElement('span');
+              span.style.color = '#B8EE41';
+              span.textContent = p.views;
+              div.appendChild(span);
+              pageContainer.appendChild(div);
+            });
+          }
+
+          // Update country texture
+          const countries = data.countries || [];
+          const visitorMap = {};
+          const maxV = Math.max(...countries.map(c => c.visitors), 1);
+          for (const c of countries) visitorMap[c.country] = c.visitors;
+
+          if (geoFeatures.length > 0) {
+            if (countryTexture) countryTexture.dispose();
+            countryTexture = buildCountryTexture(geoFeatures, visitorMap, maxV);
+            overlayMat.map = countryTexture;
+            overlayMat.needsUpdate = true;
+          }
+
+          // Add dots for new/changed countries
+          const newCountries = countries.filter(c =>
+            !lastCountries.some(lc => lc.country === c.country && lc.visitors === c.visitors)
+          );
+          lastCountries = countries;
+
+          for (const c of newCountries) {
+            const coords = COUNTRY_COORDS[c.country];
+            if (coords) {
+              addDot(coords[0], coords[1]);
+            }
+          }
+        } catch (e) {
+          console.error('Poll error:', e);
+        }
+      }
+
+      pollData();
+      setInterval(pollData, 15000);
+
+      // Flight animation interval — every 5s, pick a country and fly to CN
+      let flightIdx = 0;
+      const flightInterval = setInterval(() => {
+        const countries = lastCountries;
+        const COORDS = COUNTRY_COORDS;
+        // Filter countries that aren't CN and have coords
+        const candidates = countries.filter(c => c.country !== 'CN' && COORDS[c.country]);
+        if (candidates.length === 0) return;
+
+        // Round-robin through countries
+        const c = candidates[flightIdx % candidates.length];
+        flightIdx++;
+
+        const path = buildPathToCN(c.country, countries, COORDS);
+        if (path.length < 2) return;
+
+        // Add arcs for each hop with staggered delay
+        for (let i = 0; i < path.length - 1; i++) {
+          const hopDelay = i * 800; // 800ms between each hop
+          addArc(path[i].lat, path[i].lng, path[i + 1].lat, path[i + 1].lng, hopDelay);
+          // Add a dot at each hop point
+          addDot(path[i].lat, path[i].lng);
+        }
+        // Dot at CN arrival
+        addDot(path[path.length - 1].lat, path[path.length - 1].lng);
+      }, 5000);
+
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+
+        const now = Date.now();
+
+        for (let i = pointsGroup.children.length - 1; i >= 0; i--) {
+          const child = pointsGroup.children[i];
+          const age = now - child.userData.created;
+          if (child.userData.isRing) {
+            const scale = 1 + (age / 1000) * 2;
+            child.scale.set(scale, scale, scale);
+            child.material.opacity = Math.max(0, 0.6 - age / 3000);
+            if (age > 3000) { child.geometry.dispose(); child.material.dispose(); pointsGroup.remove(child); }
+          } else {
+            if (age > 60000) {
+              child.material.opacity = Math.max(0, 1 - (age - 60000) / 5000);
+              if (age > 65000) { child.geometry.dispose(); child.material.dispose(); pointsGroup.remove(child); }
+            }
+          }
+        }
+
+        // Fade arcs (with delay support)
+        for (let i = arcsGroup.children.length - 1; i >= 0; i--) {
+          const arc = arcsGroup.children[i];
+          const age = now - arc.userData.created;
+          if (age < 0) {
+            // Not yet visible (delayed)
+            arc.material.opacity = 0;
+          } else {
+            // Fade in quickly, then fade out
+            const fadeIn = Math.min(age / 400, 1.0);
+            const fadeOut = Math.max(0, 1.0 - age / 4000);
+            arc.material.opacity = 0.45 * fadeIn * fadeOut;
+            if (age > 4000) { arc.geometry.dispose(); arc.material.dispose(); arcsGroup.remove(arc); }
+          }
+        }
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Load initial dots for existing country data
+      const initialRes = await fetch(
+        `/api/stats/countries?site_id=${selectedSite}&period=7d`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const initialData = await initialRes.json();
+      for (const c of (initialData.countries || []).slice(0, 20)) {
+        const coords = COUNTRY_COORDS[c.country];
+        if (coords) addDot(coords[0], coords[1]);
+      }
+    }
+  </script>
+</body>
+</html>

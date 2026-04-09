@@ -3,6 +3,11 @@ export interface TimeRange {
   end: number;
 }
 
+export function getPreviousRange(range: TimeRange): TimeRange {
+  const duration = range.end - range.start;
+  return { start: range.start - duration, end: range.start };
+}
+
 export function getTimeRange(period: string, start?: string, end?: string): TimeRange {
   const now = Math.floor(Date.now() / 1000);
   const daySeconds = 86400;

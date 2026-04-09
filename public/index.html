@@ -6,6 +6,15 @@
   <title>Peekly — Analytics</title>
   <link rel="stylesheet" href="/style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body x-data="app()" x-init="init()">
 
@@ -33,7 +42,7 @@
           <h1>Peekly</h1>
           <div class="realtime" x-show="realtimeCount > 0">
             <span class="realtime-dot"></span>
-            <span x-text="realtimeCount + ' online now'"></span>
+            <span x-text="realtimeCount + ' online'"></span>
           </div>
         </div>
         <div class="header-right">
@@ -44,42 +53,86 @@
           </select>
           <select x-model="period" @change="fetchAll()">
             <option value="today">Today</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d" selected>Last 30 days</option>
-            <option value="90d">Last 90 days</option>
+            <option value="7d">7d</option>
+            <option value="30d" selected>30d</option>
+            <option value="90d">90d</option>
           </select>
           <button class="btn btn-sm" @click="showSiteModal = true">+ Site</button>
+          <button class="btn btn-sm" @click="toggleShare" x-text="currentShareToken ? 'Unshare' : 'Share'"></button>
+          <button class="theme-toggle" @click="toggleTheme" x-text="theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'"></button>
           <button class="logout-btn" @click="logout">Logout</button>
         </div>
       </div>
 
-      <!-- Metrics -->
-      <div class="metrics">
-        <div class="metric-card">
-          <div class="label">Visitors</div>
-          <div class="value accent" x-text="fmt(summary.visitors)"></div>
-        </div>
-        <div class="metric-card">
-          <div class="label">Pageviews</div>
-          <div class="value" x-text="fmt(summary.pageviews)"></div>
-        </div>
-        <div class="metric-card">
-          <div class="label">Bounce Rate</div>
-          <div class="value" x-text="summary.bounce_rate + '%'"></div>
-        </div>
-        <div class="metric-card">
-          <div class="label">Avg. Duration</div>
-          <div class="value" x-text="fmtDuration(summary.avg_duration)"></div>
-        </div>
+      <!-- Share link -->
+      <div class="snippet share-bar" x-show="currentShareToken">
+        <span x-text="shareUrl" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="btn btn-sm" @click="copyShare">Copy</button>
       </div>
 
-      <!-- Chart -->
-      <div class="chart-card">
-        <div class="chart-header">
-          <h3>Traffic</h3>
+      <!-- Hero: Left Metrics + Globe + Right Sidebar -->
+      <div class="hero">
+        <!-- Left Sidebar: 4 Metric Cards -->
+        <div class="sidebar sidebar-left">
+          <div class="sidebar-metric">
+            <div class="sidebar-metric-header">
+              <span class="label">Visitors</span>
+              <span class="delta" :class="deltaClass(summary.compare?.visitors)" x-text="fmtDelta(summary.compare?.visitors)" x-show="summary.compare?.visitors != null"></span>
+            </div>
+            <div class="value accent" x-text="fmt(summary.visitors)"></div>
+            <div class="sparkline-wrap"><canvas x-ref="sparkVisitors"></canvas></div>
+          </div>
+          <div class="sidebar-metric">
+            <div class="sidebar-metric-header">
+              <span class="label">Pageviews</span>
+              <span class="delta" :class="deltaClass(summary.compare?.pageviews)" x-text="fmtDelta(summary.compare?.pageviews)" x-show="summary.compare?.pageviews != null"></span>
+            </div>
+            <div class="value" x-text="fmt(summary.pageviews)"></div>
+            <div class="sparkline-wrap"><canvas x-ref="sparkPageviews"></canvas></div>
+          </div>
+          <div class="sidebar-metric">
+            <span class="label">Bounce</span>
+            <div class="value-sm">
+              <span x-text="summary.bounce_rate + '%'"></span>
+              <span class="delta" :class="deltaClass(summary.compare?.bounce_rate, true)" x-text="fmtDelta(summary.compare?.bounce_rate)" x-show="summary.compare?.bounce_rate != null"></span>
+            </div>
+          </div>
+          <div class="sidebar-metric">
+            <span class="label">Avg. Duration</span>
+            <div class="value-sm">
+              <span x-text="fmtDuration(summary.avg_duration)"></span>
+              <span class="delta" :class="deltaClass(summary.compare?.avg_duration)" x-text="fmtDelta(summary.compare?.avg_duration)" x-show="summary.compare?.avg_duration != null"></span>
+            </div>
+          </div>
         </div>
-        <div class="chart-container">
-          <canvas x-ref="chart"></canvas>
+
+        <!-- 3D Globe -->
+        <div class="globe-container" x-ref="globeContainer">
+          <!-- Globe HUD overlay -->
+          <div class="globe-hud" x-show="realtimeCount > 0">
+            <div class="globe-hud-count" x-text="realtimeCount"></div>
+            <div class="globe-hud-label">active visitors</div>
+          </div>
+        </div>
+
+        <!-- Right Sidebar: Traffic + Top Pages -->
+        <div class="sidebar sidebar-right">
+          <div class="sidebar-chart">
+            <div class="sidebar-chart-title">Traffic</div>
+            <div class="sidebar-chart-container">
+              <canvas x-ref="chart"></canvas>
+            </div>
+          </div>
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Top Pages</div>
+            <template x-for="p in pages.slice(0, 8)" :key="p.path">
+              <div class="sidebar-row">
+                <span class="sidebar-row-label" x-text="p.path"></span>
+                <span class="sidebar-row-value" x-text="fmt(p.views)"></span>
+              </div>
+            </template>
+            <div class="sidebar-empty" x-show="pages.length === 0">No data</div>
+          </div>
         </div>
       </div>
 
@@ -204,7 +257,139 @@
           </table>
           <div class="empty" x-show="devices.length === 0">No data yet</div>
         </div>
+
+        <!-- UTM Sources -->
+        <div class="table-card" x-show="utmSources.length > 0">
+          <h3>UTM Sources</h3>
+          <table>
+            <thead><tr><th>Source</th><th>Visitors</th></tr></thead>
+            <tbody>
+              <template x-for="u in utmSources" :key="u.name">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(u.visitors, utmSources, 'visitors') + '%'"></div>
+                    <span class="bar-text" x-text="u.name"></span>
+                  </td>
+                  <td x-text="fmt(u.visitors)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- UTM Campaigns -->
+        <div class="table-card" x-show="utmCampaigns.length > 0">
+          <h3>UTM Campaigns</h3>
+          <table>
+            <thead><tr><th>Campaign</th><th>Visitors</th></tr></thead>
+            <tbody>
+              <template x-for="u in utmCampaigns" :key="u.name">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(u.visitors, utmCampaigns, 'visitors') + '%'"></div>
+                    <span class="bar-text" x-text="u.name"></span>
+                  </td>
+                  <td x-text="fmt(u.visitors)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Entry Pages -->
+        <div class="table-card">
+          <h3>Entry Pages</h3>
+          <table>
+            <thead><tr><th>Page</th><th>Entries</th></tr></thead>
+            <tbody>
+              <template x-for="p in entryPages" :key="p.path">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(p.entries, entryPages, 'entries') + '%'"></div>
+                    <span class="bar-text" x-text="p.path"></span>
+                  </td>
+                  <td x-text="fmt(p.entries)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="entryPages.length === 0">No data yet</div>
+        </div>
+
+        <!-- Exit Pages -->
+        <div class="table-card">
+          <h3>Exit Pages</h3>
+          <table>
+            <thead><tr><th>Page</th><th>Exits</th></tr></thead>
+            <tbody>
+              <template x-for="p in exitPages" :key="p.path">
+                <tr>
+                  <td class="bar-cell">
+                    <div class="bar-bg" :style="'width:' + pct(p.exits, exitPages, 'exits') + '%'"></div>
+                    <span class="bar-text" x-text="p.path"></span>
+                  </td>
+                  <td x-text="fmt(p.exits)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div class="empty" x-show="exitPages.length === 0">No data yet</div>
+        </div>
       </div>
+
+      <!-- Funnels -->
+      <div class="funnels-section">
+        <div class="funnels-header">
+          <h3>Funnels</h3>
+          <button class="btn btn-sm" @click="showFunnelModal = true">+ Funnel</button>
+        </div>
+        <div x-show="funnels.length === 0" class="empty">No funnels yet. Create one to track conversions.</div>
+        <div class="funnels-grid">
+          <template x-for="(f, fi) in funnels" :key="f.id">
+            <div class="funnel-card">
+              <div class="funnel-card-header">
+                <span class="funnel-card-name" x-text="f.name"></span>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="funnel-overall-badge" x-text="(f.overall || 0) + '%'"></span>
+                  <button class="funnel-delete" @click="deleteFunnel(f.id)" title="Delete">&times;</button>
+                </div>
+              </div>
+              <div class="funnel-canvas-wrap">
+                <canvas class="funnel-canvas" :data-funnel-idx="fi"></canvas>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Create Funnel Modal -->
+      <template x-if="showFunnelModal">
+        <div class="modal-overlay" @click.self="showFunnelModal = false">
+          <div class="modal" style="max-width:500px">
+            <h3>Create Funnel</h3>
+            <input type="text" x-model="newFunnelName" placeholder="Funnel name (e.g., Signup Flow)">
+            <template x-for="(step, idx) in newFunnelSteps" :key="idx">
+              <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+                <span style="font-size:12px;color:var(--text-dim);width:20px" x-text="(idx+1) + '.'"></span>
+                <input type="text" x-model="step.name" placeholder="Step name" style="flex:1;margin-bottom:0">
+                <select x-model="step.match_type" style="width:120px">
+                  <option value="path">Path (exact)</option>
+                  <option value="starts_with">Path (prefix)</option>
+                  <option value="event">Event</option>
+                  <option value="event_meta">Event + Meta</option>
+                </select>
+                <input type="text" x-model="step.match_value" :placeholder="step.match_type === 'path' ? '/about/' : step.match_type === 'starts_with' ? '/works/' : step.match_type === 'event' ? 'signup_click' : 'outbound::url::resume'" style="flex:1;margin-bottom:0">
+                <button class="btn btn-sm btn-danger" @click="newFunnelSteps.splice(idx, 1)" x-show="newFunnelSteps.length > 2">x</button>
+              </div>
+            </template>
+            <button class="btn btn-sm" @click="newFunnelSteps.push({name:'',match_type:'path',match_value:''})" style="margin-top:4px">+ Step</button>
+            <div class="modal-actions">
+              <button class="btn" @click="showFunnelModal = false">Cancel</button>
+              <button class="btn btn-accent" @click="createFunnel" :disabled="!newFunnelName || newFunnelSteps.some(s => !s.name || !s.match_value)">Create</button>
+            </div>
+          </div>
+        </div>
+      </template>
 
       <!-- Add Site Modal -->
       <template x-if="showSiteModal">

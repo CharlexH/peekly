@@ -13,9 +13,15 @@ collectRoute.post("/", async (c) => {
   try {
     const payload = await c.req.json<CollectPayload>();
 
-    // Validate required fields
+    // Validate required fields and input lengths
     if (!payload.s || !payload.u || !payload.n) {
       return c.json({ error: "Missing required fields" }, 400);
+    }
+    if (payload.n.length > 256 || payload.u.length > 2048) {
+      return c.json({ error: "Invalid payload" }, 400);
+    }
+    if (payload.r && payload.r.length > 2048) {
+      return c.json({ error: "Invalid payload" }, 400);
     }
 
     // Look up site by tracking ID
@@ -42,6 +48,9 @@ collectRoute.post("/", async (c) => {
     const url = new URL(payload.u);
     const path = url.pathname;
     const referrer = payload.r ? extractDomain(payload.r) : null;
+    const utmSource = url.searchParams.get("utm_source") || null;
+    const utmMedium = url.searchParams.get("utm_medium") || null;
+    const utmCampaign = url.searchParams.get("utm_campaign") || null;
     const now = Math.floor(Date.now() / 1000);
 
     if (payload.n === "pageview") {
@@ -54,8 +63,8 @@ collectRoute.post("/", async (c) => {
 
       // Insert pageview
       await c.env.DB.prepare(
-        `INSERT INTO pageviews (id, site_id, path, referrer, country, browser, os, screen_width, visitor_hash, is_bounce, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO pageviews (id, site_id, path, referrer, country, browser, os, screen_width, visitor_hash, is_bounce, utm_source, utm_medium, utm_campaign, timestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
         .bind(
           nanoid(),
@@ -68,6 +77,9 @@ collectRoute.post("/", async (c) => {
           payload.w || null,
           visitorHash,
           recentView ? 0 : 1,
+          utmSource,
+          utmMedium,
+          utmCampaign,
           now
         )
         .run();
@@ -122,6 +134,6 @@ function extractDomain(url: string): string | null {
     const parsed = new URL(url);
     return parsed.hostname;
   } catch {
-    return url || null;
+    return null;
   }
 }

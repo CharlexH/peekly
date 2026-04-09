@@ -32,6 +32,24 @@ sitesRoute.post("/", async (c) => {
   return c.json({ site }, 201);
 });
 
+// Enable/disable public sharing
+sitesRoute.post("/:id/share", async (c) => {
+  const id = c.req.param("id");
+  const token = nanoid(16);
+  await c.env.DB.prepare("UPDATE sites SET share_token = ? WHERE id = ?")
+    .bind(token, id)
+    .run();
+  return c.json({ share_token: token });
+});
+
+sitesRoute.delete("/:id/share", async (c) => {
+  const id = c.req.param("id");
+  await c.env.DB.prepare("UPDATE sites SET share_token = NULL WHERE id = ?")
+    .bind(id)
+    .run();
+  return c.json({ success: true });
+});
+
 sitesRoute.delete("/:id", async (c) => {
   const id = c.req.param("id");
 

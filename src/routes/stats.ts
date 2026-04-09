@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../types";
-import { getTimeRange } from "../lib/time";
+import { getTimeRange, getPreviousRange } from "../lib/time";
 
 export const statsRoute = new Hono<{ Bindings: Env }>();
 
@@ -19,7 +19,8 @@ statsRoute.get("/summary", async (c) => {
 
   if (!siteId) return c.json({ error: "site_id required" }, 400);
 
-  const result = await c.env.DB.prepare(`
+  const prev = getPreviousRange(range);
+  const summarySQL = `
     SELECT
       COUNT(*) as pageviews,
       COUNT(DISTINCT visitor_hash) as visitors,
@@ -27,15 +28,59 @@ statsRoute.get("/summary", async (c) => {
       ROUND(AVG(CASE WHEN duration > 0 THEN duration ELSE NULL END), 0) as avg_duration
     FROM pageviews
     WHERE site_id = ? AND timestamp BETWEEN ? AND ?
+  `;
+
+  const [currentRes, prevRes] = await c.env.DB.batch([
+    c.env.DB.prepare(summarySQL).bind(siteId, range.start, range.end),
+    c.env.DB.prepare(summarySQL).bind(siteId, prev.start, prev.end),
+  ]);
+
+  const result = currentRes.results[0] as Record<string, unknown> | undefined;
+  const prevResult = prevRes.results[0] as Record<string, unknown> | undefined;
+
+  function delta(curr: number, previous: number): number | null {
+    if (previous === 0) return curr > 0 ? 100 : null;
+    return Math.round(((curr - previous) / previous) * 100);
+  }
+
+  const visitors = Number(result?.visitors ?? 0);
+  const pageviews = Number(result?.pageviews ?? 0);
+  const bounceRate = Number(result?.bounce_rate ?? 0);
+  const avgDuration = Number(result?.avg_duration ?? 0);
+  const prevVisitors = Number(prevResult?.visitors ?? 0);
+  const prevPageviews = Number(prevResult?.pageviews ?? 0);
+  const prevBounce = Number(prevResult?.bounce_rate ?? 0);
+  const prevDuration = Number(prevResult?.avg_duration ?? 0);
+
+  // Sparkline: daily visitors for last 7 days
+  const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
+  const sparkRows = await c.env.DB.prepare(`
+    SELECT
+      (timestamp / 86400 * 86400) as day,
+      COUNT(DISTINCT visitor_hash) as visitors,
+      COUNT(*) as pageviews
+    FROM pageviews
+    WHERE site_id = ? AND timestamp > ?
+    GROUP BY day ORDER BY day ASC
   `)
-    .bind(siteId, range.start, range.end)
-    .first();
+    .bind(siteId, sevenDaysAgo)
+    .all();
 
   return c.json({
-    pageviews: result?.pageviews ?? 0,
-    visitors: result?.visitors ?? 0,
-    bounce_rate: result?.bounce_rate ?? 0,
-    avg_duration: result?.avg_duration ?? 0,
+    pageviews,
+    visitors,
+    bounce_rate: bounceRate,
+    avg_duration: avgDuration,
+    compare: {
+      visitors: delta(visitors, prevVisitors),
+      pageviews: delta(pageviews, prevPageviews),
+      bounce_rate: delta(bounceRate, prevBounce),
+      avg_duration: delta(avgDuration, prevDuration),
+    },
+    sparkline: sparkRows.results.map((r: Record<string, unknown>) => ({
+      visitors: r.visitors as number,
+      pageviews: r.pageviews as number,
+    })),
   });
 });
 
@@ -169,6 +214,84 @@ statsRoute.get("/countries", async (c) => {
     .all();
 
   return c.json({ countries: rows.results });
+});
+
+// Entry pages (first page per session)
+statsRoute.get("/entry-pages", async (c) => {
+  const { siteId, range } = parseQuery(c);
+  if (!siteId) return c.json({ error: "site_id required" }, 400);
+
+  const rows = await c.env.DB.prepare(`
+    SELECT path, COUNT(*) as entries, COUNT(DISTINCT visitor_hash) as visitors
+    FROM pageviews p
+    WHERE site_id = ? AND timestamp BETWEEN ? AND ?
+      AND timestamp = (
+        SELECT MIN(p2.timestamp) FROM pageviews p2
+        WHERE p2.site_id = p.site_id
+          AND p2.visitor_hash = p.visitor_hash
+          AND (p2.timestamp / 1800) = (p.timestamp / 1800)
+          AND p2.timestamp BETWEEN ? AND ?
+      )
+    GROUP BY path ORDER BY entries DESC LIMIT 20
+  `)
+    .bind(siteId, range.start, range.end, range.start, range.end)
+    .all();
+
+  return c.json({ entry_pages: rows.results });
+});
+
+// Exit pages (last page per session)
+statsRoute.get("/exit-pages", async (c) => {
+  const { siteId, range } = parseQuery(c);
+  if (!siteId) return c.json({ error: "site_id required" }, 400);
+
+  const rows = await c.env.DB.prepare(`
+    SELECT path, COUNT(*) as exits, COUNT(DISTINCT visitor_hash) as visitors
+    FROM pageviews p
+    WHERE site_id = ? AND timestamp BETWEEN ? AND ?
+      AND timestamp = (
+        SELECT MAX(p2.timestamp) FROM pageviews p2
+        WHERE p2.site_id = p.site_id
+          AND p2.visitor_hash = p.visitor_hash
+          AND (p2.timestamp / 1800) = (p.timestamp / 1800)
+          AND p2.timestamp BETWEEN ? AND ?
+      )
+    GROUP BY path ORDER BY exits DESC LIMIT 20
+  `)
+    .bind(siteId, range.start, range.end, range.start, range.end)
+    .all();
+
+  return c.json({ exit_pages: rows.results });
+});
+
+// UTM campaigns
+statsRoute.get("/utm", async (c) => {
+  const { siteId, range } = parseQuery(c);
+  if (!siteId) return c.json({ error: "site_id required" }, 400);
+
+  const [sources, mediums, campaigns] = await c.env.DB.batch([
+    c.env.DB.prepare(`
+      SELECT utm_source as name, COUNT(*) as count, COUNT(DISTINCT visitor_hash) as visitors
+      FROM pageviews WHERE site_id = ? AND timestamp BETWEEN ? AND ? AND utm_source IS NOT NULL
+      GROUP BY utm_source ORDER BY count DESC LIMIT 20
+    `).bind(siteId, range.start, range.end),
+    c.env.DB.prepare(`
+      SELECT utm_medium as name, COUNT(*) as count, COUNT(DISTINCT visitor_hash) as visitors
+      FROM pageviews WHERE site_id = ? AND timestamp BETWEEN ? AND ? AND utm_medium IS NOT NULL
+      GROUP BY utm_medium ORDER BY count DESC LIMIT 20
+    `).bind(siteId, range.start, range.end),
+    c.env.DB.prepare(`
+      SELECT utm_campaign as name, COUNT(*) as count, COUNT(DISTINCT visitor_hash) as visitors
+      FROM pageviews WHERE site_id = ? AND timestamp BETWEEN ? AND ? AND utm_campaign IS NOT NULL
+      GROUP BY utm_campaign ORDER BY count DESC LIMIT 20
+    `).bind(siteId, range.start, range.end),
+  ]);
+
+  return c.json({
+    sources: sources.results,
+    mediums: mediums.results,
+    campaigns: campaigns.results,
+  });
 });
 
 // Custom events

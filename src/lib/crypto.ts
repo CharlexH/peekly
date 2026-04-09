@@ -20,7 +20,15 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   const key = await deriveKey(password, salt);
   const keyBuffer = await crypto.subtle.exportKey("raw", key) as ArrayBuffer;
   const keyBytes = new Uint8Array(keyBuffer);
-  return toHex(keyBytes) === keyHex;
+  const expected = fromHex(keyHex);
+  return timingSafeEqual(keyBytes, expected);
+}
+
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
 }
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {

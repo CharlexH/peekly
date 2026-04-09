@@ -30,5 +30,11 @@ var hp=history.pushState;
 history.pushState=function(){hp.apply(this,arguments);t('pageview');ps=Date.now()};
 w.addEventListener('popstate',function(){t('pageview');ps=Date.now()});
 t('pageview');
+d.addEventListener('click',function(e){
+var a=e.target;while(a&&a.tagName!=='A')a=a.parentElement;
+if(!a||!a.href)return;
+try{var h=new URL(a.href);if(h.hostname===l.hostname)return;
+t('outbound',{url:a.href,text:(a.innerText||'').substring(0,100)})}catch(x){}
+},true);
 w.peekly=function(name,meta){t(name,meta)};
 })();`;

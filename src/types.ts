@@ -3,6 +3,7 @@ export interface Env {
   JWT_SECRET: string;
   AUTH_PASSWORD_HASH: string;
   APP_NAME: string;
+  REPORT_EMAIL?: string;
 }
 
 export interface Site {
@@ -10,6 +11,7 @@ export interface Site {
   name: string;
   domain: string;
   tracking_id: string;
+  share_token: string | null;
   created_at: number;
 }
 
