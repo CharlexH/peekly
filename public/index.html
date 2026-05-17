@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Peekly — Analytics</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
@@ -65,12 +66,18 @@
               <option :value="env.name" x-text="env.label"></option>
             </template>
           </select>
-          <select x-model="period" @change="refreshCurrent()">
+          <select x-model="period" @change="onPeriodChange()">
             <option value="today">Today</option>
             <option value="7d">7d</option>
             <option value="30d" selected>30d</option>
             <option value="90d">90d</option>
+            <option value="custom">Custom</option>
           </select>
+          <div class="date-range-control" x-show="period === 'custom'">
+            <input type="date" x-model="customStart" @change="onCustomRangeChange()">
+            <span>to</span>
+            <input type="date" x-model="customEnd" @change="onCustomRangeChange()">
+          </div>
           <button class="btn btn-sm" x-show="mode === 'sites'" @click="showSiteModal = true">+ Site</button>
           <button class="btn btn-sm" x-show="mode === 'sites'" @click="toggleShare" x-text="currentShareToken ? 'Unshare' : 'Share'"></button>
           <button class="theme-toggle" @click="toggleTheme" x-text="theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'"></button>
@@ -91,7 +98,44 @@
 
         <template x-if="appOverview && !appOpsLoading">
           <div>
-            <div class="ops-hero">
+            <div class="ops-page-head">
+              <div>
+                <div class="ops-kicker">Operating Summary</div>
+                <h2 x-text="appOverview.app.name + ' / ' + appOverview.environment.label"></h2>
+                <p x-text="'Window: ' + rangeLabel(appOverview.range) + ' · Source: ' + appOverview.growth.source.active_subscribers + ' + ' + appOverview.growth.source.sales"></p>
+              </div>
+              <div class="ops-status-pill" :class="statusClass(appOverview.health.status)">
+                <span x-text="appOverview.health.label"></span>
+                <small x-text="'Cost gate ' + burnCostLabel(appOverview.ledger.system.burn_cost_disabled)"></small>
+              </div>
+            </div>
+
+            <div class="ops-decision-grid">
+              <div class="ops-decision-card primary">
+                <span class="ops-kicker">Do this first</span>
+                <strong x-text="primaryAction().title"></strong>
+                <p x-text="primaryAction().body"></p>
+              </div>
+              <div class="ops-decision-card">
+                <span class="ops-kicker">Current bottleneck</span>
+                <strong x-text="bottleneckTitle()"></strong>
+                <p x-text="bottleneckBody()"></p>
+              </div>
+              <div class="ops-decision-card">
+                <span class="ops-kicker">Cost control</span>
+                <strong x-text="costRiskTitle()"></strong>
+                <p x-text="costRiskBody()"></p>
+              </div>
+            </div>
+
+            <div class="ops-tabbar">
+              <button :class="{active: appOpsTab === 'overview'}" @click="setAppOpsTab('overview')">Overview</button>
+              <button :class="{active: appOpsTab === 'funnel'}" @click="setAppOpsTab('funnel')">Funnel</button>
+              <button :class="{active: appOpsTab === 'cost'}" @click="setAppOpsTab('cost')">Cost & Reliability</button>
+              <button :class="{active: appOpsTab === 'raw'}" @click="setAppOpsTab('raw')">Raw Signals</button>
+            </div>
+
+            <div class="ops-hero" x-show="appOpsTab === 'overview'">
               <div class="ops-status-card" :class="statusClass(appOverview.health.status)">
                 <div class="ops-kicker">App Health</div>
                 <div class="ops-status-title" x-text="appOverview.health.label"></div>
@@ -126,7 +170,7 @@
               </div>
             </div>
 
-            <div class="growth-board" x-show="appOverview.growth">
+            <div class="growth-board" x-show="appOverview.growth && appOpsTab === 'overview'">
               <div class="growth-target-panel">
                 <div>
                   <div class="ops-kicker">North Star</div>
@@ -229,24 +273,96 @@
               </div>
             </div>
 
-            <div class="ops-grid">
+            <div class="growth-grid" x-show="appOpsTab === 'funnel'">
               <div class="ops-panel ops-panel-wide">
                 <div class="ops-panel-header">
-                  <h3>Generation Trend</h3>
-                  <span>jobs / acked / failed</span>
+                  <div>
+                    <h3>Revenue Funnel</h3>
+                    <span x-text="'Actual ' + fmtRate(appOverview.growth.funnel.overall_conversion_percent) + ' · target ' + fmtRate(appOverview.growth.funnel.target_overall_conversion_percent)"></span>
+                  </div>
                 </div>
-                <div class="ops-chart-wrap">
-                  <canvas x-ref="appOpsChart"></canvas>
+                <div class="funnel-visual">
+                  <template x-for="(step, index) in appOverview.growth.funnel.steps" :key="step.id">
+                    <div class="funnel-stage" :class="funnelStatusClass(step.status)">
+                      <div class="funnel-stage-head">
+                        <div>
+                          <strong x-text="step.label"></strong>
+                          <span x-text="index === 0 ? 'Entry volume' : 'Conversion from previous step'"></span>
+                        </div>
+                        <div>
+                          <strong x-text="fmt(step.actual_count)"></strong>
+                          <span x-text="'target ' + fmt(step.target_count)"></span>
+                        </div>
+                      </div>
+                      <div class="funnel-track">
+                        <div class="funnel-bar" :style="'width:' + funnelBarWidth(step) + '%'"></div>
+                        <div class="funnel-target" :style="'left:' + funnelTargetPosition(step) + '%'"></div>
+                      </div>
+                      <div class="funnel-stage-foot">
+                        <span x-text="step.actual_rate == null ? 'Start' : 'Actual ' + fmtRate(step.actual_rate)"></span>
+                        <span x-text="step.target_rate == null ? '' : 'Target ' + fmtRate(step.target_rate)"></span>
+                        <span x-text="'Gap ' + fmt(step.count_gap)"></span>
+                      </div>
+                    </div>
+                  </template>
                 </div>
-                <div class="empty" x-show="!appOverview.ledger.timeline.length">No generation jobs in this period</div>
               </div>
 
               <div class="ops-panel">
                 <div class="ops-panel-header">
+                  <h3>How to read it</h3>
+                  <span>operator guide</span>
+                </div>
+                <div class="ops-guide-list">
+                  <div>
+                    <strong>1. Find the yellow or red step.</strong>
+                    <span>That is where the app loses users against the target model.</span>
+                  </div>
+                  <div>
+                    <strong>2. Fix the earliest bad step first.</strong>
+                    <span>Traffic growth only helps after activation and paywall intent are healthy.</span>
+                  </div>
+                  <div>
+                    <strong>3. Watch cost while testing.</strong>
+                    <span>Free trials and paid AI cost must move with revenue, not ahead of it.</span>
+                  </div>
+                </div>
+                <div class="ops-alert-list ops-scroll">
+                  <template x-for="item in appOverview.growth.recommendations" :key="item.title">
+                    <div class="ops-alert" :class="severityClass(item.severity)">
+                      <strong x-text="item.title"></strong>
+                      <span x-text="item.body"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <div class="ops-grid" x-show="appOpsTab === 'cost' || appOpsTab === 'raw'">
+              <div class="ops-panel ops-panel-wide" x-show="appOpsTab === 'cost'">
+                <div class="ops-panel-header">
+                  <div>
+                    <h3>Generation Trend</h3>
+                    <span x-text="'jobs / acked / failed · ' + rangeLabel(appOverview.range)"></span>
+                  </div>
+                </div>
+                <div class="ops-chart-wrap">
+                  <canvas x-ref="appOpsChart"></canvas>
+                </div>
+                <div class="chart-legend">
+                  <span><i class="legend-dot jobs"></i>Jobs</span>
+                  <span><i class="legend-dot acked"></i>Acked</span>
+                  <span><i class="legend-dot failed"></i>Failed</span>
+                </div>
+                <div class="empty" x-show="!appOverview.ledger.timeline.length">No generation jobs in this period</div>
+              </div>
+
+              <div class="ops-panel" x-show="appOpsTab === 'cost'">
+                <div class="ops-panel-header">
                   <h3>Alerts</h3>
                   <span x-text="appOverview.alerts.computed.length + ' computed'"></span>
                 </div>
-                <div class="ops-alert-list">
+                <div class="ops-alert-list ops-scroll">
                   <template x-for="alert in appOverview.alerts.computed" :key="alert.title">
                     <div class="ops-alert" :class="severityClass(alert.severity)">
                       <strong x-text="alert.title"></strong>
@@ -257,80 +373,66 @@
                 </div>
               </div>
 
-              <div class="ops-panel">
+              <div class="ops-panel" x-show="appOpsTab === 'raw'">
                 <div class="ops-panel-header">
                   <h3>Provider Attempts</h3>
                   <span x-text="fmt(appOverview.ledger.provider.failed_attempts) + ' failed'"></span>
                 </div>
-                <table>
-                  <thead><tr><th>Kind</th><th>Status</th><th>Error</th><th>Count</th></tr></thead>
-                  <tbody>
-                    <template x-for="row in appOverview.ledger.provider.attempts" :key="row.kind + row.status + row.error_code">
-                      <tr>
-                        <td x-text="row.kind"></td>
-                        <td x-text="row.status"></td>
-                        <td x-text="row.error_code || '—'"></td>
-                        <td x-text="fmt(row.count)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+                <div class="ops-table-scroll">
+                  <table>
+                    <thead><tr><th>Kind</th><th>Status</th><th>Error</th><th>Count</th></tr></thead>
+                    <tbody>
+                      <template x-for="row in appOverview.ledger.provider.attempts" :key="row.kind + row.status + row.error_code">
+                        <tr>
+                          <td x-text="row.kind"></td>
+                          <td x-text="row.status"></td>
+                          <td x-text="row.error_code || '-'"></td>
+                          <td x-text="fmt(row.count)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
                 <div class="empty" x-show="appOverview.ledger.provider.attempts.length === 0">No provider attempts in this period</div>
               </div>
 
-              <div class="ops-panel">
+              <div class="ops-panel" x-show="appOpsTab === 'raw'">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Ark Tokens</h3>
                     <span x-text="(appOverview.ledger.provider.token_usage?.available === false) ? 'waiting for migration' : fmt(appOverview.ledger.provider.token_usage?.attempts || 0) + ' text attempts'"></span>
                   </div>
                 </div>
-                <table>
-                  <thead><tr><th>Metric</th><th>Tokens</th></tr></thead>
-                  <tbody>
-                    <tr>
-                      <td>Total</td>
-                      <td x-text="fmt(appOverview.ledger.provider.token_usage?.total_tokens || 0)"></td>
-                    </tr>
-                    <tr>
-                      <td>Input</td>
-                      <td x-text="fmt(appOverview.ledger.provider.token_usage?.input_tokens || 0)"></td>
-                    </tr>
-                    <tr>
-                      <td>Output</td>
-                      <td x-text="fmt(appOverview.ledger.provider.token_usage?.output_tokens || 0)"></td>
-                    </tr>
-                    <tr>
-                      <td>Reasoning</td>
-                      <td x-text="fmt(appOverview.ledger.provider.token_usage?.reasoning_tokens || 0)"></td>
-                    </tr>
-                    <tr>
-                      <td>Cached input</td>
-                      <td x-text="fmt(appOverview.ledger.provider.token_usage?.cached_input_tokens || 0)"></td>
-                    </tr>
-                    <tr>
-                      <td>Avg / attempt</td>
-                      <td x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.avg_total_tokens_per_attempt)"></td>
-                    </tr>
-                  </tbody>
-                </table>
-                <table x-show="(appOverview.ledger.provider.token_usage?.models || []).length > 0">
-                  <thead><tr><th>Model</th><th>Attempts</th><th>Total</th><th>Avg</th></tr></thead>
-                  <tbody>
-                    <template x-for="model in appOverview.ledger.provider.token_usage?.models || []" :key="(model.model_id || 'unknown') + (model.endpoint_id || '')">
-                      <tr>
-                        <td x-text="model.model_id || model.endpoint_id || 'unknown'"></td>
-                        <td x-text="fmt(model.attempts)"></td>
-                        <td x-text="fmt(model.total_tokens)"></td>
-                        <td x-text="fmtMaybe(model.avg_total_tokens_per_attempt)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+                <div class="ops-table-scroll">
+                  <table>
+                    <thead><tr><th>Metric</th><th>Tokens</th></tr></thead>
+                    <tbody>
+                      <tr><td>Total</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.total_tokens || 0)"></td></tr>
+                      <tr><td>Input</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.input_tokens || 0)"></td></tr>
+                      <tr><td>Output</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.output_tokens || 0)"></td></tr>
+                      <tr><td>Reasoning</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.reasoning_tokens || 0)"></td></tr>
+                      <tr><td>Cached input</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.cached_input_tokens || 0)"></td></tr>
+                      <tr><td>Avg / attempt</td><td x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.avg_total_tokens_per_attempt)"></td></tr>
+                    </tbody>
+                  </table>
+                  <table x-show="(appOverview.ledger.provider.token_usage?.models || []).length > 0">
+                    <thead><tr><th>Model</th><th>Attempts</th><th>Total</th><th>Avg</th></tr></thead>
+                    <tbody>
+                      <template x-for="model in appOverview.ledger.provider.token_usage?.models || []" :key="(model.model_id || 'unknown') + (model.endpoint_id || '')">
+                        <tr>
+                          <td x-text="model.model_id || model.endpoint_id || 'unknown'"></td>
+                          <td x-text="fmt(model.attempts)"></td>
+                          <td x-text="fmt(model.total_tokens)"></td>
+                          <td x-text="fmtMaybe(model.avg_total_tokens_per_attempt)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
                 <div class="empty" x-show="appOverview.ledger.provider.token_usage?.available === false">Nians ledger token columns are not deployed yet</div>
               </div>
 
-              <div class="ops-panel">
+              <div class="ops-panel" x-show="appOpsTab === 'cost'">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Volcengine Cost & Usage</h3>
@@ -338,44 +440,70 @@
                   </div>
                   <button class="btn btn-sm" @click="syncVolcengineSnapshot" :disabled="providerSnapshotLoading" x-text="providerSnapshotLoading ? 'Syncing' : 'Sync'"></button>
                 </div>
-                <table>
-                  <thead><tr><th>Metric</th><th>Value</th><th>Window</th><th>Updated</th></tr></thead>
-                  <tbody>
-                    <template x-for="row in appOverview.provider_usage" :key="row.provider + row.metric + row.captured_at">
-                      <tr>
-                        <td x-text="row.metric"></td>
-                        <td x-text="fmtMaybe(row.value, row.unit ? ' ' + row.unit : '')"></td>
-                        <td x-text="fmtProviderWindow(row)"></td>
-                        <td x-text="fmtTime(row.captured_at ? new Date(row.captured_at * 1000).toISOString() : null)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+                <div class="ops-table-scroll">
+                  <table>
+                    <thead><tr><th>Metric</th><th>Value</th><th>Window</th><th>Updated</th></tr></thead>
+                    <tbody>
+                      <template x-for="row in appOverview.provider_usage" :key="row.provider + row.metric + row.captured_at">
+                        <tr>
+                          <td x-text="row.metric"></td>
+                          <td x-text="fmtMaybe(row.value, row.unit ? ' ' + row.unit : '')"></td>
+                          <td x-text="fmtProviderWindow(row)"></td>
+                          <td x-text="fmtTime(row.captured_at ? new Date(row.captured_at * 1000).toISOString() : null)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
                 <div class="empty" x-show="appOverview.provider_usage.length === 0">Volcengine balance and usage snapshots are not connected yet</div>
               </div>
 
-              <div class="ops-panel">
+              <div class="ops-panel" x-show="appOpsTab === 'cost'">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Volcengine Provider Limits</h3>
                     <span>speech concurrency / qps quota signals</span>
                   </div>
                 </div>
-                <table>
-                  <thead><tr><th>Quota</th><th>Peak</th><th>Limit</th><th>Headroom</th><th>Updated</th></tr></thead>
-                  <tbody>
-                    <template x-for="row in appOverview.provider_quota" :key="row.provider + row.quota_type + row.captured_at">
-                      <tr>
-                        <td x-text="row.quota_type"></td>
-                        <td x-text="fmtMaybe(row.used, row.unit ? ' ' + row.unit : '')"></td>
-                        <td x-text="fmtMaybe(row.limit_value, row.unit ? ' ' + row.unit : '')"></td>
-                        <td x-text="fmtMaybe(row.remaining, row.unit ? ' ' + row.unit : '')"></td>
-                        <td x-text="fmtTime(row.captured_at ? new Date(row.captured_at * 1000).toISOString() : null)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+                <div class="ops-table-scroll">
+                  <table>
+                    <thead><tr><th>Quota</th><th>Peak</th><th>Limit</th><th>Headroom</th><th>Updated</th></tr></thead>
+                    <tbody>
+                      <template x-for="row in appOverview.provider_quota" :key="row.provider + row.quota_type + row.captured_at">
+                        <tr>
+                          <td x-text="row.quota_type"></td>
+                          <td x-text="fmtMaybe(row.used, row.unit ? ' ' + row.unit : '')"></td>
+                          <td x-text="fmtMaybe(row.limit_value, row.unit ? ' ' + row.unit : '')"></td>
+                          <td x-text="fmtMaybe(row.remaining, row.unit ? ' ' + row.unit : '')"></td>
+                          <td x-text="fmtTime(row.captured_at ? new Date(row.captured_at * 1000).toISOString() : null)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
                 <div class="empty" x-show="appOverview.provider_quota.length === 0">Speech provider limit snapshots need VOLCENGINE_SPEECH_APP_ID</div>
+              </div>
+
+              <div class="ops-panel ops-panel-wide" x-show="appOpsTab === 'raw'">
+                <div class="ops-panel-header">
+                  <h3>Event Mix</h3>
+                  <span x-text="fmt(appOverview.behavior.events) + ' events'"></span>
+                </div>
+                <div class="ops-table-scroll">
+                  <table>
+                    <thead><tr><th>Event</th><th>Count</th><th>Installs</th></tr></thead>
+                    <tbody>
+                      <template x-for="row in appOverview.behavior.top_events" :key="row.event_name">
+                        <tr>
+                          <td x-text="row.event_name"></td>
+                          <td x-text="fmt(row.count)"></td>
+                          <td x-text="fmtMaybe(row.installs)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="empty" x-show="appOverview.behavior.top_events.length === 0">No app events in this period</div>
               </div>
             </div>
           </div>

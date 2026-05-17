@@ -17,7 +17,9 @@ function app() {
     appOpsError: '',
     providerSnapshotLoading: false,
     growthTargetCny: Number(localStorage.getItem('pk_growth_target_cny')) || 50000,
-    period: '30d',
+    period: localStorage.getItem('pk_period') || '30d',
+    customStart: localStorage.getItem('pk_custom_start') || '',
+    customEnd: localStorage.getItem('pk_custom_end') || '',
     summary: { visitors: 0, pageviews: 0, bounce_rate: 0, avg_duration: 0, sparkline: [], compare: {} },
     timeseries: [],
     pages: [],
@@ -35,6 +37,7 @@ function app() {
 
     // UI
     mode: localStorage.getItem('pk_mode') || 'sites',
+    appOpsTab: localStorage.getItem('pk_app_ops_tab') || 'overview',
     showSiteModal: false,
     newSiteName: '',
     newSiteDomain: '',
@@ -56,6 +59,8 @@ function app() {
 
     async init() {
       document.documentElement.setAttribute('data-theme', this.theme);
+      if (!['overview', 'funnel', 'cost', 'raw'].includes(this.appOpsTab)) this.setAppOpsTab('overview');
+      if (this.period === 'custom') this.ensureCustomRange();
       if (this.token) {
         await Promise.all([this.fetchSites(), this.fetchApps()]);
         if (this.sites.length > 0) {
@@ -110,6 +115,30 @@ function app() {
       }
     },
 
+    setAppOpsTab(tab) {
+      const allowed = ['overview', 'funnel', 'cost', 'raw'];
+      this.appOpsTab = allowed.includes(tab) ? tab : 'overview';
+      localStorage.setItem('pk_app_ops_tab', this.appOpsTab);
+      if (this.appOpsTab === 'cost') {
+        this.$nextTick(() => this.renderAppOpsTrend());
+      }
+    },
+
+    async onPeriodChange() {
+      localStorage.setItem('pk_period', this.period);
+      if (this.period === 'custom') this.ensureCustomRange();
+      await this.refreshCurrent();
+    },
+
+    async onCustomRangeChange() {
+      if (this.period !== 'custom') return;
+      localStorage.setItem('pk_custom_start', this.customStart || '');
+      localStorage.setItem('pk_custom_end', this.customEnd || '');
+      if (this.customRangeSeconds()) {
+        await this.refreshCurrent();
+      }
+    },
+
     async login() {
       this.loggingIn = true;
       this.loginError = '';
@@ -151,9 +180,10 @@ function app() {
     },
 
     async api(path) {
-      const sep = path.includes('?') ? '&' : '?';
-      const url = `${path}${sep}site_id=${this.selectedSite}&period=${this.period}`;
-      const res = await fetch(url, { headers: this.headers() });
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set('site_id', this.selectedSite);
+      this.appendRangeParams(url.searchParams);
+      const res = await fetch(url.pathname + url.search, { headers: this.headers() });
       if (res.status === 401) {
         this.logout();
         return null;
@@ -201,9 +231,12 @@ function app() {
       this.appOpsLoading = true;
       this.appOpsError = '';
       try {
-        const env = encodeURIComponent(this.selectedAppEnvironment || 'sandbox');
-        const target = encodeURIComponent(this.growthTargetCny || 50000);
-        const res = await fetch(`/api/apps/${this.selectedApp}/overview?environment=${env}&period=${this.period}&target_mrr_cny=${target}`, {
+        const params = new URLSearchParams({
+          environment: this.selectedAppEnvironment || 'sandbox',
+          target_mrr_cny: String(this.growthTargetCny || 50000),
+        });
+        this.appendRangeParams(params);
+        const res = await fetch(`/api/apps/${encodeURIComponent(this.selectedApp)}/overview?${params.toString()}`, {
           headers: this.headers(),
         });
         if (res.status === 401) { this.logout(); return; }
@@ -578,15 +611,22 @@ function app() {
       const bucketSize = interval === 'hour' ? 3600 : 86400;
       const now = Math.floor(Date.now() / 1000);
       let rangeStart;
-      switch (this.period) {
-        case 'today': rangeStart = now - (now % 86400); break;
-        case '7d': rangeStart = now - 7 * 86400; break;
-        case '90d': rangeStart = now - 90 * 86400; break;
-        case '30d': default: rangeStart = now - 30 * 86400; break;
+      let rangeEnd = Math.floor(now / bucketSize) * bucketSize;
+      const customRange = this.period === 'custom' ? this.customRangeSeconds() : null;
+      if (customRange) {
+        rangeStart = customRange.start;
+        rangeEnd = customRange.end;
+      } else {
+        switch (this.period) {
+          case 'today': rangeStart = now - (now % 86400); break;
+          case '7d': rangeStart = now - 7 * 86400; break;
+          case '90d': rangeStart = now - 90 * 86400; break;
+          case '30d': default: rangeStart = now - 30 * 86400; break;
+        }
       }
       // Align start to bucket boundary
       rangeStart = Math.floor(rangeStart / bucketSize) * bucketSize;
-      const rangeEnd = Math.floor(now / bucketSize) * bucketSize;
+      rangeEnd = Math.floor(rangeEnd / bucketSize) * bucketSize;
 
       // Index existing data by bucket timestamp
       const dataMap = new Map();
@@ -1403,6 +1443,138 @@ function app() {
     },
 
     // Helpers
+    appendRangeParams(params) {
+      params.set('period', this.period);
+      if (this.period === 'custom') {
+        this.ensureCustomRange();
+        if (this.customStart) params.set('start', this.customStart);
+        if (this.customEnd) params.set('end', this.customEnd);
+      }
+      return params;
+    },
+
+    ensureCustomRange() {
+      if (!this.customEnd) this.customEnd = this.todayDate();
+      if (!this.customStart) this.customStart = this.dateDaysAgo(29);
+      const start = Date.parse(`${this.customStart}T00:00:00Z`);
+      const end = Date.parse(`${this.customEnd}T00:00:00Z`);
+      if (Number.isNaN(start) || Number.isNaN(end)) {
+        this.customStart = this.dateDaysAgo(29);
+        this.customEnd = this.todayDate();
+      } else if (start > end) {
+        const previousStart = this.customStart;
+        this.customStart = this.customEnd;
+        this.customEnd = previousStart;
+      }
+      localStorage.setItem('pk_custom_start', this.customStart || '');
+      localStorage.setItem('pk_custom_end', this.customEnd || '');
+    },
+
+    customRangeSeconds() {
+      if (!this.customStart || !this.customEnd) return null;
+      const start = Date.parse(`${this.customStart}T00:00:00Z`);
+      const end = Date.parse(`${this.customEnd}T00:00:00Z`);
+      if (Number.isNaN(start) || Number.isNaN(end)) return null;
+      const startSeconds = Math.floor(start / 1000);
+      const endSeconds = Math.floor(end / 1000) + 86400 - 1;
+      return {
+        start: Math.min(startSeconds, endSeconds),
+        end: Math.max(startSeconds, endSeconds),
+      };
+    },
+
+    todayDate() {
+      return new Date().toISOString().slice(0, 10);
+    },
+
+    dateDaysAgo(days) {
+      const date = new Date();
+      date.setUTCDate(date.getUTCDate() - days);
+      return date.toISOString().slice(0, 10);
+    },
+
+    primaryAction() {
+      const item = this.appOverview?.growth?.recommendations?.[0];
+      if (item) return item;
+      return {
+        title: 'Keep monitoring the funnel',
+        body: 'Revenue, conversion, and cost are inside the configured targets for this window.',
+      };
+    },
+
+    bottleneckStep() {
+      const steps = this.appOverview?.growth?.funnel?.steps || [];
+      return steps.find((step) => step.status !== 'ok')
+        || this.appOverview?.growth?.funnel?.bottleneck
+        || null;
+    },
+
+    bottleneckTitle() {
+      const step = this.bottleneckStep();
+      return step ? step.label : 'Funnel is on target';
+    },
+
+    bottleneckBody() {
+      const step = this.bottleneckStep();
+      if (!step) return 'No step is materially behind target in the selected window.';
+      const gap = this.fmt(step.count_gap);
+      if (step.actual_rate == null || step.target_rate == null) {
+        return `${this.fmt(step.actual_count)} actual vs ${this.fmt(step.target_count)} target. You need ${gap} more qualified entries in this window.`;
+      }
+      return `${this.fmtRate(step.actual_rate)} actual vs ${this.fmtRate(step.target_rate)} target, with a ${gap} user gap. Fix this step before buying more traffic.`;
+    },
+
+    costRiskTitle() {
+      const growth = this.appOverview?.growth;
+      const ledger = this.appOverview?.ledger;
+      const env = this.appOverview?.environment;
+      if (!growth) return 'Cost data is unavailable';
+      if (growth.costs.actual_free_trial_cost_cny > 0 && growth.revenue.estimated_period_sales_cny === 0) {
+        return 'Trial spend has no payback yet';
+      }
+      if (growth.costs.estimated_period_contribution_cny < 0) {
+        return 'Contribution is negative';
+      }
+      if (ledger?.system?.burn_cost_disabled) {
+        return 'Provider spend is closed';
+      }
+      if (env && !env.is_production) {
+        return 'Sandbox spend is open';
+      }
+      return 'Cost is inside guardrails';
+    },
+
+    costRiskBody() {
+      const growth = this.appOverview?.growth;
+      if (!growth) return 'Connect growth and ledger data before making spend decisions.';
+      return `Trial ${this.fmtCny(growth.costs.actual_free_trial_cost_cny)} · paid AI ${this.fmtCny(growth.costs.actual_paid_ai_cost_cny)} · contribution ${this.fmtCny(growth.costs.estimated_period_contribution_cny)}.`;
+    },
+
+    rangeLabel(range) {
+      if (!range || !range.start || !range.end) return this.period;
+      const start = new Date(range.start * 1000);
+      const end = new Date(range.end * 1000);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return this.period;
+      return `${start.toLocaleDateString()}-${end.toLocaleDateString()}`;
+    },
+
+    funnelScaleMax() {
+      const steps = this.appOverview?.growth?.funnel?.steps || [];
+      return Math.max(...steps.map((step) => Math.max(Number(step.actual_count) || 0, Number(step.target_count) || 0)), 1);
+    },
+
+    funnelBarWidth(step) {
+      const value = Number(step?.actual_count) || 0;
+      if (value <= 0) return 0;
+      return Math.max(4, Math.min(100, Math.round((value / this.funnelScaleMax()) * 100)));
+    },
+
+    funnelTargetPosition(step) {
+      const value = Number(step?.target_count) || 0;
+      if (value <= 0) return 0;
+      return Math.max(2, Math.min(100, Math.round((value / this.funnelScaleMax()) * 100)));
+    },
+
     fmt(n) {
       if (n == null) return '0';
       return Number(n).toLocaleString();
