@@ -148,21 +148,21 @@
 
               <section class="ops-block ops-money-block">
                 <div class="ops-block-header">
-                  <div>
-                    <div class="ops-kicker">Money Snapshot</div>
-                    <h2 x-text="fmtCny(appOverview.growth.target.monthly_revenue_cny)"></h2>
-                    <p>Monthly gross sales target</p>
-                  </div>
-                  <div class="ops-header-actions">
+                  <div class="ops-money-summary">
+                    <div>
+                      <div class="ops-kicker">Money Snapshot</div>
+                      <h2 x-text="fmtCny(appOverview.growth.target.monthly_revenue_cny)"></h2>
+                      <p>Monthly gross sales target</p>
+                    </div>
                     <label class="ops-inline-input">
                       <span>Target</span>
                       <input type="number" min="1" step="1000" x-model.number="growthTargetCny" @change="saveGrowthTarget()">
                     </label>
-                    <div class="ops-action-note">
-                      <span>Cost control</span>
-                      <strong x-text="costRiskTitle()"></strong>
-                      <p x-text="costRiskBody()"></p>
-                    </div>
+                  </div>
+                  <div class="ops-action-note">
+                    <span>Cost control</span>
+                    <strong x-text="costRiskTitle()"></strong>
+                    <p x-text="costRiskBody()"></p>
                   </div>
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-money">

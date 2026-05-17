@@ -1521,6 +1521,17 @@ select:focus { border-color: var(--accent); }
   min-width: 0;
 }
 
+.ops-money-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ops-money-summary > div {
+  min-width: 0;
+}
+
 .ops-business-block .ops-block-header h2,
 .ops-money-block .ops-block-header h2 {
   font-size: 20px;
@@ -1548,21 +1559,6 @@ select:focus { border-color: var(--accent); }
 .ops-business-block .ops-action-note.primary {
   margin-top: 0;
   margin-bottom: 0;
-}
-
-.ops-header-actions {
-  display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
-  gap: 10px;
-  min-width: 0;
-}
-
-.ops-header-actions .ops-action-note {
-  min-width: 0;
-}
-
-.ops-header-actions .ops-inline-input {
-  min-width: 0;
 }
 
 .ops-business-block .ops-kpi-grid,
