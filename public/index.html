@@ -104,7 +104,8 @@
                   <div>
                     <div class="ops-kicker">Business Snapshot</div>
                     <h2 x-text="appOverview.app.name + ' / ' + appOverview.environment.label"></h2>
-                    <p x-text="'Window: ' + rangeLabel(appOverview.range) + ' · Source: ' + appOverview.growth.source.active_subscribers + ' + ' + appOverview.growth.source.sales"></p>
+                    <p x-text="'Window: ' + rangeLabel(appOverview.range) + ' · Last sync: ' + fmtSyncTime(appOpsLastSyncedAt)"></p>
+                    <p class="ops-source-line" x-text="'Source: ' + appOverview.growth.source.active_subscribers + ' + ' + appOverview.growth.source.sales"></p>
                   </div>
                   <div class="ops-action-note primary">
                     <span>Do this first</span>

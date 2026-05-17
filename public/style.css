@@ -1549,6 +1549,11 @@ select:focus { border-color: var(--accent); }
   -webkit-line-clamp: 2;
 }
 
+.ops-business-block .ops-source-line {
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .ops-business-block .ops-action-note,
 .ops-money-block .ops-action-note {
   padding: 10px 11px;

@@ -15,6 +15,7 @@ function app() {
     appOverview: null,
     appOpsLoading: false,
     appOpsError: '',
+    appOpsLastSyncedAt: localStorage.getItem('pk_app_ops_last_synced_at') || '',
     providerSnapshotLoading: false,
     growthTargetCny: Number(localStorage.getItem('pk_growth_target_cny')) || 50000,
     period: localStorage.getItem('pk_period') || '30d',
@@ -235,6 +236,8 @@ function app() {
           return;
         }
         this.appOverview = data;
+        this.appOpsLastSyncedAt = new Date().toISOString();
+        localStorage.setItem('pk_app_ops_last_synced_at', this.appOpsLastSyncedAt);
         this.$nextTick(() => this.renderAppOpsTrend());
       } catch (e) {
         this.appOpsError = 'Connection error';
@@ -1673,6 +1676,18 @@ function app() {
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return '—';
       return d.toLocaleString();
+    },
+
+    fmtSyncTime(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString(undefined, {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
     },
 
     fmtProviderWindow(row) {
