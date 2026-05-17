@@ -106,11 +106,11 @@
                     <h2 x-text="appOverview.app.name + ' / ' + appOverview.environment.label"></h2>
                     <p x-text="'Window: ' + rangeLabel(appOverview.range) + ' · Source: ' + appOverview.growth.source.active_subscribers + ' + ' + appOverview.growth.source.sales"></p>
                   </div>
-                </div>
-                <div class="ops-action-note primary">
-                  <span>Do this first</span>
-                  <strong x-text="primaryAction().title"></strong>
-                  <p x-text="primaryAction().body"></p>
+                  <div class="ops-action-note primary">
+                    <span>Do this first</span>
+                    <strong x-text="primaryAction().title"></strong>
+                    <p x-text="primaryAction().body"></p>
+                  </div>
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-business">
                   <div class="ops-kpi">
@@ -141,7 +141,7 @@
                   <div class="ops-kpi">
                     <span>Registered Users</span>
                     <strong x-text="fmt(appOverview.growth.target.actual_registered_users)"></strong>
-                    <small>Used for free-trial exposure</small>
+                    <small>Free-trial exposure</small>
                   </div>
                 </div>
               </section>
@@ -153,10 +153,17 @@
                     <h2 x-text="fmtCny(appOverview.growth.target.monthly_revenue_cny)"></h2>
                     <p>Monthly gross sales target</p>
                   </div>
-                  <label class="ops-inline-input">
-                    <span>Target</span>
-                    <input type="number" min="1" step="1000" x-model.number="growthTargetCny" @change="saveGrowthTarget()">
-                  </label>
+                  <div class="ops-header-actions">
+                    <label class="ops-inline-input">
+                      <span>Target</span>
+                      <input type="number" min="1" step="1000" x-model.number="growthTargetCny" @change="saveGrowthTarget()">
+                    </label>
+                    <div class="ops-action-note">
+                      <span>Cost control</span>
+                      <strong x-text="costRiskTitle()"></strong>
+                      <p x-text="costRiskBody()"></p>
+                    </div>
+                  </div>
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-money">
                   <div class="ops-kpi">
@@ -177,7 +184,7 @@
                   <div class="ops-kpi">
                     <span>Contribution</span>
                     <strong x-text="fmtCny(appOverview.growth.costs.estimated_period_contribution_cny)"></strong>
-                    <small>After Apple estimate, paid AI, and trial cost</small>
+                    <small>After Apple, paid AI, trial</small>
                   </div>
                   <div class="ops-kpi">
                     <span>AI Cost</span>
@@ -187,13 +194,8 @@
                   <div class="ops-kpi">
                     <span>Trial Exposure</span>
                     <strong x-text="fmtCny(appOverview.growth.costs.actual_free_trial_cost_cny)"></strong>
-                    <small x-text="'Budget model ' + fmtCny(appOverview.growth.costs.target_free_trial_cost_cny)"></small>
+                    <small x-text="'Budget ' + fmtCny(appOverview.growth.costs.target_free_trial_cost_cny)"></small>
                   </div>
-                </div>
-                <div class="ops-action-note">
-                  <span>Cost control</span>
-                  <strong x-text="costRiskTitle()"></strong>
-                  <p x-text="costRiskBody()"></p>
                 </div>
               </section>
 
@@ -276,12 +278,12 @@
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-health">
                   <div class="ops-kpi">
-                    <span>Generation Success</span>
+                    <span>Success</span>
                     <strong x-text="fmtMaybe(appOverview.ledger.generation.success_rate, '%')"></strong>
                     <small x-text="fmt(appOverview.ledger.generation.acked) + ' acked / ' + fmt(appOverview.ledger.generation.total) + ' jobs'"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Generation Time</span>
+                    <span>Gen Time</span>
                     <strong x-text="fmtDuration((appOverview.ledger.generation.avg_text_seconds || 0) + (appOverview.ledger.generation.avg_tts_seconds || 0))"></strong>
                     <small x-text="'Text ' + fmtDuration(appOverview.ledger.generation.avg_text_seconds) + ' · TTS ' + fmtDuration(appOverview.ledger.generation.avg_tts_seconds)"></small>
                   </div>
@@ -296,14 +298,14 @@
                     <small x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.attempts) + ' text attempts'"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Provider Failures</span>
+                    <span>Failures</span>
                     <strong x-text="fmt(appOverview.ledger.provider.failed_attempts)"></strong>
                     <small x-text="fmt(appOverview.ledger.provider.active_leases) + ' active leases'"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Volcengine Balance</span>
+                    <span>Balance</span>
                     <strong x-text="providerUsageLabel('account_available_balance')"></strong>
-                    <small>Latest synced snapshot</small>
+                    <small>Latest snapshot</small>
                   </div>
                 </div>
                 <div class="ops-health-stack">
