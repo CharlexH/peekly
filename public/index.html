@@ -128,14 +128,7 @@
               </div>
             </div>
 
-            <div class="ops-tabbar">
-              <button :class="{active: appOpsTab === 'overview'}" @click="setAppOpsTab('overview')">Overview</button>
-              <button :class="{active: appOpsTab === 'funnel'}" @click="setAppOpsTab('funnel')">Funnel</button>
-              <button :class="{active: appOpsTab === 'cost'}" @click="setAppOpsTab('cost')">Cost & Reliability</button>
-              <button :class="{active: appOpsTab === 'raw'}" @click="setAppOpsTab('raw')">Raw Signals</button>
-            </div>
-
-            <div class="ops-hero" x-show="appOpsTab === 'overview'">
+            <div class="ops-hero">
               <div class="ops-status-card" :class="statusClass(appOverview.health.status)">
                 <div class="ops-kicker">App Health</div>
                 <div class="ops-status-title" x-text="appOverview.health.label"></div>
@@ -170,7 +163,7 @@
               </div>
             </div>
 
-            <div class="growth-board" x-show="appOverview.growth && appOpsTab === 'overview'">
+            <div class="growth-board" x-show="appOverview.growth">
               <div class="growth-target-panel">
                 <div>
                   <div class="ops-kicker">North Star</div>
@@ -231,19 +224,34 @@
                       <span x-text="'Actual ' + fmtRate(appOverview.growth.funnel.overall_conversion_percent) + ' · target ' + fmtRate(appOverview.growth.funnel.target_overall_conversion_percent)"></span>
                     </div>
                   </div>
-                  <table>
-                    <thead><tr><th>Step</th><th>Actual</th><th>Target</th><th>Rate</th><th>Gap</th></tr></thead>
+                  <table class="growth-funnel-table">
+                    <thead><tr><th>Step</th><th>Volume progress</th><th>Gap</th><th>Step conversion</th></tr></thead>
                     <tbody>
-                      <template x-for="step in appOverview.growth.funnel.steps" :key="step.id">
+                      <template x-for="(step, index) in appOverview.growth.funnel.steps" :key="step.id">
                         <tr>
                           <td>
                             <span class="growth-step" :class="funnelStatusClass(step.status)"></span>
                             <span x-text="step.label"></span>
                           </td>
-                          <td x-text="fmt(step.actual_count)"></td>
-                          <td x-text="fmt(step.target_count)"></td>
-                          <td x-text="step.actual_rate == null ? '—' : fmtRate(step.actual_rate) + ' / ' + fmtRate(step.target_rate)"></td>
-                          <td x-text="fmt(step.count_gap)"></td>
+                          <td>
+                            <div class="funnel-progress-row">
+                              <div class="funnel-progress-track">
+                                <div class="funnel-progress-fill" :class="funnelStatusClass(step.status)" :style="'width:' + volumeProgressWidth(step) + '%'"></div>
+                              </div>
+                              <span x-text="volumeProgressLabel(step)"></span>
+                            </div>
+                          </td>
+                          <td>
+                            <span class="funnel-gap" :class="{zero: !step.count_gap}" x-text="volumeGapLabel(step)"></span>
+                          </td>
+                          <td>
+                            <div class="funnel-progress-row">
+                              <div class="funnel-progress-track">
+                                <div class="funnel-progress-fill conversion" :class="conversionProgressClass(step, index)" :style="'width:' + conversionProgressWidth(step, index) + '%'"></div>
+                              </div>
+                              <span x-text="conversionProgressLabel(step, index)"></span>
+                            </div>
+                          </td>
                         </tr>
                       </template>
                     </tbody>
@@ -273,73 +281,13 @@
               </div>
             </div>
 
-            <div class="growth-grid" x-show="appOpsTab === 'funnel'">
-              <div class="ops-panel ops-panel-wide">
-                <div class="ops-panel-header">
-                  <div>
-                    <h3>Revenue Funnel</h3>
-                    <span x-text="'Actual ' + fmtRate(appOverview.growth.funnel.overall_conversion_percent) + ' · target ' + fmtRate(appOverview.growth.funnel.target_overall_conversion_percent)"></span>
-                  </div>
-                </div>
-                <div class="funnel-visual">
-                  <template x-for="(step, index) in appOverview.growth.funnel.steps" :key="step.id">
-                    <div class="funnel-stage" :class="funnelStatusClass(step.status)">
-                      <div class="funnel-stage-head">
-                        <div>
-                          <strong x-text="step.label"></strong>
-                          <span x-text="index === 0 ? 'Entry volume' : 'Conversion from previous step'"></span>
-                        </div>
-                        <div>
-                          <strong x-text="fmt(step.actual_count)"></strong>
-                          <span x-text="'target ' + fmt(step.target_count)"></span>
-                        </div>
-                      </div>
-                      <div class="funnel-track">
-                        <div class="funnel-bar" :style="'width:' + funnelBarWidth(step) + '%'"></div>
-                        <div class="funnel-target" :style="'left:' + funnelTargetPosition(step) + '%'"></div>
-                      </div>
-                      <div class="funnel-stage-foot">
-                        <span x-text="step.actual_rate == null ? 'Start' : 'Actual ' + fmtRate(step.actual_rate)"></span>
-                        <span x-text="step.target_rate == null ? '' : 'Target ' + fmtRate(step.target_rate)"></span>
-                        <span x-text="'Gap ' + fmt(step.count_gap)"></span>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              <div class="ops-panel">
-                <div class="ops-panel-header">
-                  <h3>How to read it</h3>
-                  <span>operator guide</span>
-                </div>
-                <div class="ops-guide-list">
-                  <div>
-                    <strong>1. Find the yellow or red step.</strong>
-                    <span>That is where the app loses users against the target model.</span>
-                  </div>
-                  <div>
-                    <strong>2. Fix the earliest bad step first.</strong>
-                    <span>Traffic growth only helps after activation and paywall intent are healthy.</span>
-                  </div>
-                  <div>
-                    <strong>3. Watch cost while testing.</strong>
-                    <span>Free trials and paid AI cost must move with revenue, not ahead of it.</span>
-                  </div>
-                </div>
-                <div class="ops-alert-list ops-scroll">
-                  <template x-for="item in appOverview.growth.recommendations" :key="item.title">
-                    <div class="ops-alert" :class="severityClass(item.severity)">
-                      <strong x-text="item.title"></strong>
-                      <span x-text="item.body"></span>
-                    </div>
-                  </template>
-                </div>
-              </div>
+            <div class="ops-section-head">
+              <h3>Cost, Reliability, and Raw Signals</h3>
+              <span>provider spend, generation health, and instrumentation detail</span>
             </div>
 
-            <div class="ops-grid" x-show="appOpsTab === 'cost' || appOpsTab === 'raw'">
-              <div class="ops-panel ops-panel-wide" x-show="appOpsTab === 'cost'">
+            <div class="ops-grid">
+              <div class="ops-panel ops-panel-wide">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Generation Trend</h3>
@@ -357,7 +305,7 @@
                 <div class="empty" x-show="!appOverview.ledger.timeline.length">No generation jobs in this period</div>
               </div>
 
-              <div class="ops-panel" x-show="appOpsTab === 'cost'">
+              <div class="ops-panel">
                 <div class="ops-panel-header">
                   <h3>Alerts</h3>
                   <span x-text="appOverview.alerts.computed.length + ' computed'"></span>
@@ -373,7 +321,7 @@
                 </div>
               </div>
 
-              <div class="ops-panel" x-show="appOpsTab === 'raw'">
+              <div class="ops-panel">
                 <div class="ops-panel-header">
                   <h3>Provider Attempts</h3>
                   <span x-text="fmt(appOverview.ledger.provider.failed_attempts) + ' failed'"></span>
@@ -396,7 +344,7 @@
                 <div class="empty" x-show="appOverview.ledger.provider.attempts.length === 0">No provider attempts in this period</div>
               </div>
 
-              <div class="ops-panel" x-show="appOpsTab === 'raw'">
+              <div class="ops-panel">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Ark Tokens</h3>
@@ -432,7 +380,7 @@
                 <div class="empty" x-show="appOverview.ledger.provider.token_usage?.available === false">Nians ledger token columns are not deployed yet</div>
               </div>
 
-              <div class="ops-panel" x-show="appOpsTab === 'cost'">
+              <div class="ops-panel">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Volcengine Cost & Usage</h3>
@@ -458,7 +406,7 @@
                 <div class="empty" x-show="appOverview.provider_usage.length === 0">Volcengine balance and usage snapshots are not connected yet</div>
               </div>
 
-              <div class="ops-panel" x-show="appOpsTab === 'cost'">
+              <div class="ops-panel">
                 <div class="ops-panel-header">
                   <div>
                     <h3>Volcengine Provider Limits</h3>
@@ -484,7 +432,7 @@
                 <div class="empty" x-show="appOverview.provider_quota.length === 0">Speech provider limit snapshots need VOLCENGINE_SPEECH_APP_ID</div>
               </div>
 
-              <div class="ops-panel ops-panel-wide" x-show="appOpsTab === 'raw'">
+              <div class="ops-panel ops-panel-wide">
                 <div class="ops-panel-header">
                   <h3>Event Mix</h3>
                   <span x-text="fmt(appOverview.behavior.events) + ' events'"></span>

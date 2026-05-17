@@ -37,7 +37,6 @@ function app() {
 
     // UI
     mode: localStorage.getItem('pk_mode') || 'sites',
-    appOpsTab: localStorage.getItem('pk_app_ops_tab') || 'overview',
     showSiteModal: false,
     newSiteName: '',
     newSiteDomain: '',
@@ -59,7 +58,6 @@ function app() {
 
     async init() {
       document.documentElement.setAttribute('data-theme', this.theme);
-      if (!['overview', 'funnel', 'cost', 'raw'].includes(this.appOpsTab)) this.setAppOpsTab('overview');
       if (this.period === 'custom') this.ensureCustomRange();
       if (this.token) {
         await Promise.all([this.fetchSites(), this.fetchApps()]);
@@ -112,15 +110,6 @@ function app() {
         await this.fetchAppOverview();
       } else {
         await this.fetchAll();
-      }
-    },
-
-    setAppOpsTab(tab) {
-      const allowed = ['overview', 'funnel', 'cost', 'raw'];
-      this.appOpsTab = allowed.includes(tab) ? tab : 'overview';
-      localStorage.setItem('pk_app_ops_tab', this.appOpsTab);
-      if (this.appOpsTab === 'cost') {
-        this.$nextTick(() => this.renderAppOpsTrend());
       }
     },
 
@@ -1558,21 +1547,78 @@ function app() {
       return `${start.toLocaleDateString()}-${end.toLocaleDateString()}`;
     },
 
-    funnelScaleMax() {
+    progressPercent(numerator, denominator) {
+      const n = Number(numerator) || 0;
+      const d = Number(denominator) || 0;
+      if (d <= 0) return n > 0 ? 100 : 0;
+      return Math.round((n / d) * 1000) / 10;
+    },
+
+    progressWidth(percent) {
+      const value = Number(percent) || 0;
+      if (value <= 0) return 0;
+      return Math.max(3, Math.min(100, value));
+    },
+
+    volumeProgressPercent(step) {
+      return this.progressPercent(step?.actual_count, step?.target_count);
+    },
+
+    volumeProgressWidth(step) {
+      return this.progressWidth(this.volumeProgressPercent(step));
+    },
+
+    volumeProgressLabel(step) {
+      return `${this.fmt(step?.actual_count)} / ${this.fmt(step?.target_count)} · ${this.fmtRate(this.volumeProgressPercent(step))}`;
+    },
+
+    volumeGapLabel(step) {
+      const gap = Number(step?.count_gap) || 0;
+      return gap > 0 ? `${this.fmt(gap)} short` : 'On target';
+    },
+
+    previousFunnelStep(index) {
       const steps = this.appOverview?.growth?.funnel?.steps || [];
-      return Math.max(...steps.map((step) => Math.max(Number(step.actual_count) || 0, Number(step.target_count) || 0)), 1);
+      return index > 0 ? steps[index - 1] : null;
     },
 
-    funnelBarWidth(step) {
-      const value = Number(step?.actual_count) || 0;
-      if (value <= 0) return 0;
-      return Math.max(4, Math.min(100, Math.round((value / this.funnelScaleMax()) * 100)));
+    conversionProgressPercent(step, index) {
+      const previous = this.previousFunnelStep(index);
+      if (!previous || !step?.target_rate) return null;
+      if ((Number(previous.actual_count) || 0) <= 0) return null;
+      return this.progressPercent(step.actual_rate, step.target_rate);
     },
 
-    funnelTargetPosition(step) {
-      const value = Number(step?.target_count) || 0;
-      if (value <= 0) return 0;
-      return Math.max(2, Math.min(100, Math.round((value / this.funnelScaleMax()) * 100)));
+    conversionProgressWidth(step, index) {
+      const percent = this.conversionProgressPercent(step, index);
+      return percent == null ? 0 : this.progressWidth(percent);
+    },
+
+    conversionProgressClass(step, index) {
+      const previous = this.previousFunnelStep(index);
+      if (previous && (Number(previous.actual_count) || 0) <= 0 && (Number(step?.actual_count) || 0) > 0) {
+        return 'alert-warning';
+      }
+      const percent = this.conversionProgressPercent(step, index);
+      if (percent == null) return 'alert-info';
+      if (percent < 50) return 'alert-critical';
+      if (percent < 85) return 'alert-warning';
+      return 'alert-info';
+    },
+
+    conversionProgressLabel(step, index) {
+      const previous = this.previousFunnelStep(index);
+      if (!previous) return 'Entry step';
+      const previousActual = Number(previous.actual_count) || 0;
+      const actualCount = Number(step?.actual_count) || 0;
+      if (previousActual <= 0 && actualCount > 0) {
+        return `Tracking gap · ${this.fmt(actualCount)} / 0`;
+      }
+      if (previousActual <= 0) {
+        return 'No upstream users';
+      }
+      const progress = this.conversionProgressPercent(step, index);
+      return `${this.fmtRate(step?.actual_rate)} / ${this.fmtRate(step?.target_rate)} · ${this.fmtRate(progress)}`;
     },
 
     fmt(n) {
