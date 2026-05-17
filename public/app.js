@@ -1539,6 +1539,23 @@ function app() {
       return `Trial ${this.fmtCny(growth.costs.actual_free_trial_cost_cny)} · paid AI ${this.fmtCny(growth.costs.actual_paid_ai_cost_cny)} · contribution ${this.fmtCny(growth.costs.estimated_period_contribution_cny)}.`;
     },
 
+    funnelActual(stepId) {
+      const steps = this.appOverview?.growth?.funnel?.steps || [];
+      const step = steps.find((item) => item.id === stepId);
+      return Number(step?.actual_count) || 0;
+    },
+
+    providerUsage(metric) {
+      const rows = this.appOverview?.provider_usage || [];
+      return rows.find((row) => row.metric === metric) || null;
+    },
+
+    providerUsageLabel(metric) {
+      const row = this.providerUsage(metric);
+      if (!row) return '—';
+      return this.fmtMaybe(row.value, row.unit ? ' ' + row.unit : '');
+    },
+
     rangeLabel(range) {
       if (!range || !range.start || !range.end) return this.period;
       const start = new Date(range.start * 1000);
