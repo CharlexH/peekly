@@ -87,7 +87,7 @@ funnelsRoute.get("/:id/analyze", async (c) => {
 
   for (let i = 0; i < steps.results.length; i++) {
     const step = steps.results[i];
-    let rows: { visitor_hash: string }[];
+    let rows: { visitor_hash: string }[] = [];
 
     if (step.match_type === "event") {
       const result = await c.env.DB.prepare(`

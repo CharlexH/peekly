@@ -289,7 +289,7 @@
       const gridRadius = 1.008;
       const gridMat = new THREE.LineBasicMaterial({ color: 0x3a5a30, transparent: true, opacity: 0.35 });
 
-      for (let lat = -60; lat <= 60; lat += 30) {
+      for (let lat = -75; lat <= 75; lat += 15) {
         const pts = [];
         const phi = (90 - lat) * Math.PI / 180;
         for (let lng = 0; lng <= 360; lng += 2) {
@@ -304,7 +304,7 @@
         scene.add(new THREE.Line(geo, gridMat));
       }
 
-      for (let lng = 0; lng < 360; lng += 30) {
+      for (let lng = 0; lng < 360; lng += 15) {
         const pts = [];
         const theta = (lng + 180) * Math.PI / 180;
         for (let lat = -90; lat <= 90; lat += 2) {

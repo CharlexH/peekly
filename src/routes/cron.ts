@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { hasVolcengineBillingCredentials, recordVolcengineProviderSnapshots } from "../lib/volcengine-billing";
 
 interface SiteRow {
   id: string;
@@ -157,5 +158,26 @@ export async function handleWeeklyReport(env: Env): Promise<void> {
     } catch (e) {
       console.error(`Failed to send report for ${site.name}:`, e);
     }
+  }
+}
+
+export async function handleAppOpsProviderSnapshots(env: Env): Promise<void> {
+  if (!hasVolcengineBillingCredentials(env)) {
+    console.log("Volcengine billing credentials not set, skipping App Ops provider snapshots");
+    return;
+  }
+
+  try {
+    const result = await recordVolcengineProviderSnapshots(env, { appSlug: "nians-storybook" });
+    console.log(
+      `Recorded ${result.balance.inserted} Volcengine balance snapshot${result.balance.inserted === 1 ? "" : "s"}, ` +
+      `${result.speech.usageInserted} speech usage snapshot${result.speech.usageInserted === 1 ? "" : "s"}, ` +
+      `${result.speech.quotaInserted} speech quota snapshot${result.speech.quotaInserted === 1 ? "" : "s"}`,
+    );
+    for (const error of result.speech.errors) {
+      console.error("Volcengine speech monitoring snapshot failed:", error);
+    }
+  } catch (error) {
+    console.error("Failed to record App Ops provider snapshots:", error);
   }
 }

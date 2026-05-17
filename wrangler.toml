@@ -11,8 +11,19 @@ binding = "DB"
 database_name = "peekly"
 database_id = "b4123e02-0514-4b4f-88b5-49522252d3c5"
 
+[[d1_databases]]
+binding = "NIANS_SANDBOX_DB"
+database_name = "nians-storybook-ledger"
+database_id = "458af978-37c5-4449-b398-6ab3160d81b1"
+
+[[d1_databases]]
+binding = "NIANS_PROD_DB"
+database_name = "nians-storybook-ledger-prod"
+database_id = "c29f5f9a-dff5-447c-9c85-44ebc3a261d9"
+
 [triggers]
-crons = ["0 9 * * 1"]
+crons = ["0 9 * * 1", "*/5 * * * *"]
 
 [vars]
 APP_NAME = "Peekly"
+VOLCENGINE_SPEECH_RESOURCE_IDS = "volc.service_type.10029"

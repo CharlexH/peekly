@@ -9,6 +9,14 @@ function app() {
     // Data
     sites: [],
     selectedSite: '',
+    apps: [],
+    selectedApp: '',
+    selectedAppEnvironment: 'sandbox',
+    appOverview: null,
+    appOpsLoading: false,
+    appOpsError: '',
+    providerSnapshotLoading: false,
+    growthTargetCny: Number(localStorage.getItem('pk_growth_target_cny')) || 50000,
     period: '30d',
     summary: { visitors: 0, pageviews: 0, bounce_rate: 0, avg_duration: 0, sparkline: [], compare: {} },
     timeseries: [],
@@ -26,6 +34,7 @@ function app() {
     realtimeCount: 0,
 
     // UI
+    mode: localStorage.getItem('pk_mode') || 'sites',
     showSiteModal: false,
     newSiteName: '',
     newSiteDomain: '',
@@ -42,18 +51,28 @@ function app() {
 
     // Globe state
     _globe: null,
+    _globeBubblesModulePromise: null,
+    _realtimeTimer: null,
 
     async init() {
       document.documentElement.setAttribute('data-theme', this.theme);
       if (this.token) {
-        await this.fetchSites();
+        await Promise.all([this.fetchSites(), this.fetchApps()]);
         if (this.sites.length > 0) {
-          this.selectedSite = this.sites[0].id;
-          await this.fetchAll();
+          this.selectedSite = this.selectedSite || this.sites[0].id;
         }
-        this.startRealtime();
-        // Delay globe init to ensure DOM is fully rendered after Alpine template switch
-        setTimeout(() => this.initGlobe(), 300);
+        if (this.apps.length > 0) {
+          this.selectedApp = this.selectedApp || this.apps[0].id;
+          this.selectedAppEnvironment = this.selectedAppEnvironment || this.apps[0].environments?.[0]?.name || 'sandbox';
+        }
+        if (this.mode === 'apps') {
+          await this.fetchAppOverview();
+        } else if (this.selectedSite) {
+          await this.fetchAll();
+          this.startRealtime();
+          // Delay globe init to ensure DOM is fully rendered after Alpine template switch
+          setTimeout(() => this.initGlobe(), 300);
+        }
       }
     },
 
@@ -64,7 +83,31 @@ function app() {
       this.$nextTick(() => {
         this.renderChart();
         this.renderSparklines();
+        this.renderAppOpsTrend();
       });
+    },
+
+    async setMode(mode) {
+      if (this.mode === mode) return;
+      this.mode = mode;
+      localStorage.setItem('pk_mode', mode);
+      if (mode === 'apps') {
+        this.destroyGlobe();
+        this.realtimeCount = 0;
+        await this.fetchAppOverview();
+      } else {
+        if (this.selectedSite) await this.fetchAll();
+        this.startRealtime();
+        setTimeout(() => this.initGlobe(), 300);
+      }
+    },
+
+    async refreshCurrent() {
+      if (this.mode === 'apps') {
+        await this.fetchAppOverview();
+      } else {
+        await this.fetchAll();
+      }
     },
 
     async login() {
@@ -95,6 +138,8 @@ function app() {
     logout() {
       this.token = '';
       localStorage.removeItem('pk_token');
+      if (this._realtimeTimer) clearInterval(this._realtimeTimer);
+      this._realtimeTimer = null;
       this.destroyGlobe();
     },
 
@@ -126,6 +171,93 @@ function app() {
       } catch (e) {
         console.error('Failed to fetch sites:', e);
       }
+    },
+
+    async fetchApps() {
+      try {
+        const res = await fetch('/api/apps', { headers: this.headers() });
+        if (res.status === 401) { this.logout(); return; }
+        const data = await res.json();
+        this.apps = data.apps || [];
+        if (!this.selectedApp && this.apps.length > 0) {
+          this.selectedApp = this.apps[0].id;
+          this.selectedAppEnvironment = this.apps[0].environments?.[0]?.name || 'sandbox';
+        }
+      } catch (e) {
+        console.error('Failed to fetch apps:', e);
+      }
+    },
+
+    get currentApp() {
+      return this.apps.find(a => a.id === this.selectedApp) || null;
+    },
+
+    get currentAppEnvironments() {
+      return this.currentApp?.environments || [];
+    },
+
+    async fetchAppOverview() {
+      if (!this.selectedApp) return;
+      this.appOpsLoading = true;
+      this.appOpsError = '';
+      try {
+        const env = encodeURIComponent(this.selectedAppEnvironment || 'sandbox');
+        const target = encodeURIComponent(this.growthTargetCny || 50000);
+        const res = await fetch(`/api/apps/${this.selectedApp}/overview?environment=${env}&period=${this.period}&target_mrr_cny=${target}`, {
+          headers: this.headers(),
+        });
+        if (res.status === 401) { this.logout(); return; }
+        const data = await res.json();
+        if (!res.ok) {
+          this.appOpsError = data.error || 'Failed to load App Ops';
+          return;
+        }
+        this.appOverview = data;
+        this.$nextTick(() => this.renderAppOpsTrend());
+      } catch (e) {
+        this.appOpsError = 'Connection error';
+      } finally {
+        this.appOpsLoading = false;
+      }
+    },
+
+    async syncVolcengineSnapshot() {
+      if (!this.selectedApp) return;
+      this.providerSnapshotLoading = true;
+      this.appOpsError = '';
+      try {
+        const env = encodeURIComponent(this.selectedAppEnvironment || 'sandbox');
+        const res = await fetch(`/api/apps/${this.selectedApp}/provider-snapshots/volcengine?environment=${env}`, {
+          method: 'POST',
+          headers: this.headers(),
+        });
+        if (res.status === 401) { this.logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          this.appOpsError = data.error || 'Failed to sync provider snapshot';
+          return;
+        }
+        await this.fetchAppOverview();
+      } catch (e) {
+        this.appOpsError = 'Connection error';
+      } finally {
+        this.providerSnapshotLoading = false;
+      }
+    },
+
+    async onAppChange() {
+      const app = this.currentApp;
+      this.selectedAppEnvironment = app?.environments?.[0]?.name || 'sandbox';
+      await this.fetchAppOverview();
+    },
+
+    async saveGrowthTarget() {
+      const value = Number(this.growthTargetCny);
+      if (!Number.isFinite(value) || value <= 0) {
+        this.growthTargetCny = 50000;
+      }
+      localStorage.setItem('pk_growth_target_cny', String(this.growthTargetCny));
+      if (this.mode === 'apps') await this.fetchAppOverview();
     },
 
     updateShareToken() {
@@ -338,11 +470,13 @@ function app() {
 
       if (summary) {
         this.summary = summary;
-        this.$nextTick(() => this.renderSparklines());
       }
       if (timeseries) {
-        this.timeseries = timeseries.data || [];
-        this.$nextTick(() => this.renderChart());
+        this.timeseries = this._fillTimeseries(timeseries.data || [], timeseries.interval || 'day');
+        this.$nextTick(() => {
+          this.renderChart();
+          this.renderSparklines();
+        });
       }
       if (pages) this.pages = pages.pages || [];
       if (referrers) this.referrers = referrers.referrers || [];
@@ -398,8 +532,9 @@ function app() {
     },
 
     startRealtime() {
+      if (this._realtimeTimer) clearInterval(this._realtimeTimer);
       const poll = async () => {
-        if (!this.token || !this.selectedSite) return;
+        if (!this.token || !this.selectedSite || this.mode !== 'sites') return;
         try {
           const data = await this.api('/api/stats/realtime');
           if (data) {
@@ -409,7 +544,7 @@ function app() {
         } catch (e) {}
       };
       poll();
-      setInterval(poll, 15000);
+      this._realtimeTimer = setInterval(poll, 15000);
     },
 
     async addSite() {
@@ -439,11 +574,50 @@ function app() {
     },
 
     // Sparkline rendering
+    _fillTimeseries(data, interval) {
+      const bucketSize = interval === 'hour' ? 3600 : 86400;
+      const now = Math.floor(Date.now() / 1000);
+      let rangeStart;
+      switch (this.period) {
+        case 'today': rangeStart = now - (now % 86400); break;
+        case '7d': rangeStart = now - 7 * 86400; break;
+        case '90d': rangeStart = now - 90 * 86400; break;
+        case '30d': default: rangeStart = now - 30 * 86400; break;
+      }
+      // Align start to bucket boundary
+      rangeStart = Math.floor(rangeStart / bucketSize) * bucketSize;
+      const rangeEnd = Math.floor(now / bucketSize) * bucketSize;
+
+      // Index existing data by bucket timestamp
+      const dataMap = new Map();
+      for (const d of data) {
+        dataMap.set(d.timestamp, d);
+      }
+
+      const filled = [];
+      for (let t = rangeStart; t <= rangeEnd; t += bucketSize) {
+        const existing = dataMap.get(t);
+        if (existing) {
+          filled.push(existing);
+        } else {
+          filled.push({
+            timestamp: t,
+            date: new Date(t * 1000).toISOString(),
+            visitors: 0,
+            pageviews: 0,
+            avg_duration: 0,
+          });
+        }
+      }
+      return filled.length > 0 ? filled : data;
+    },
+
     renderSparklines() {
-      const sparkline = this.summary.sparkline || [];
-      if (sparkline.length < 2) return;
-      this.drawSparkline(this.$refs.sparkVisitors, sparkline.map(s => s.visitors));
-      this.drawSparkline(this.$refs.sparkPageviews, sparkline.map(s => s.pageviews));
+      const ts = this.timeseries;
+      if (!ts || ts.length < 2) return;
+      this.drawSparkline(this.$refs.sparkVisitors, ts.map(s => s.visitors));
+      this.drawSparkline(this.$refs.sparkPageviews, ts.map(s => s.pageviews));
+      this.drawSparkline(this.$refs.sparkDuration, ts.map(s => s.avg_duration || 0));
     },
 
     drawSparkline(canvas, values) {
@@ -462,29 +636,34 @@ function app() {
 
       ctx.clearRect(0, 0, w, h);
 
-      // Fill
+      const lineColor = this.cssVar('--sparkline');
+
+      // Line path helper
+      const traceLine = () => {
+        for (let i = 0; i < values.length; i++) {
+          const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+          const y = pad + (h - pad * 2) - (values[i] / max) * (h - pad * 2);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+      };
+
+      // Gradient fill (line color → transparent, top to bottom)
+      const grad = ctx.createLinearGradient(0, pad, 0, h - pad);
+      grad.addColorStop(0, lineColor);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.beginPath();
-      for (let i = 0; i < values.length; i++) {
-        const x = pad + (i / (values.length - 1)) * (w - pad * 2);
-        const y = pad + (h - pad * 2) - (values[i] / max) * (h - pad * 2);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      traceLine();
       ctx.lineTo(pad + (w - pad * 2), h - pad);
       ctx.lineTo(pad, h - pad);
       ctx.closePath();
-      ctx.fillStyle = this.cssVar('--sparkline-fill');
+      ctx.fillStyle = grad;
       ctx.fill();
 
       // Line
       ctx.beginPath();
-      for (let i = 0; i < values.length; i++) {
-        const x = pad + (i / (values.length - 1)) * (w - pad * 2);
-        const y = pad + (h - pad * 2) - (values[i] / max) * (h - pad * 2);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.strokeStyle = this.cssVar('--sparkline');
+      traceLine();
+      ctx.strokeStyle = lineColor;
       ctx.lineWidth = 1.5;
       ctx.stroke();
     },
@@ -513,7 +692,6 @@ function app() {
       const gridColor = this.cssVar('--chart-grid');
       const labelColor = this.cssVar('--chart-label');
       const accentColor = this.cssVar('--sparkline');
-      const fillColor = this.cssVar('--sparkline-fill');
 
       ctx.clearRect(0, 0, w, h);
 
@@ -535,28 +713,31 @@ function app() {
 
       if (data.length < 2) return;
 
-      // Fill
+      // Chart line path helper
+      const traceChartLine = () => {
+        for (let i = 0; i < data.length; i++) {
+          const x = pad.left + (i / (data.length - 1)) * plotW;
+          const y = pad.top + plotH - (data[i].visitors / maxVal) * plotH;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+      };
+
+      // Gradient fill (accent color → transparent, top to bottom)
+      const chartGrad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+      chartGrad.addColorStop(0, accentColor);
+      chartGrad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.beginPath();
-      for (let i = 0; i < data.length; i++) {
-        const x = pad.left + (i / (data.length - 1)) * plotW;
-        const y = pad.top + plotH - (data[i].visitors / maxVal) * plotH;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      traceChartLine();
       ctx.lineTo(pad.left + plotW, pad.top + plotH);
       ctx.lineTo(pad.left, pad.top + plotH);
       ctx.closePath();
-      ctx.fillStyle = fillColor;
+      ctx.fillStyle = chartGrad;
       ctx.fill();
 
       // Line
       ctx.beginPath();
-      for (let i = 0; i < data.length; i++) {
-        const x = pad.left + (i / (data.length - 1)) * plotW;
-        const y = pad.top + plotH - (data[i].visitors / maxVal) * plotH;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      traceChartLine();
       ctx.strokeStyle = accentColor;
       ctx.lineWidth = 1.5;
       ctx.stroke();
@@ -574,9 +755,80 @@ function app() {
       }
     },
 
+    renderAppOpsTrend() {
+      const canvas = this.$refs.appOpsChart;
+      const timeline = this.appOverview?.ledger?.timeline || [];
+      if (!canvas || timeline.length === 0) return;
+
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const w = rect.width;
+      const h = rect.height;
+      const pad = { top: 12, right: 12, bottom: 24, left: 34 };
+      const plotW = w - pad.left - pad.right;
+      const plotH = h - pad.top - pad.bottom;
+      const maxJobs = Math.max(...timeline.map(d => Number(d.jobs) || 0), 1);
+      const maxAcked = Math.max(...timeline.map(d => Number(d.acked) || 0), 1);
+      const gridColor = this.cssVar('--chart-grid');
+      const labelColor = this.cssVar('--chart-label');
+      const accentColor = this.cssVar('--sparkline');
+      const warnColor = '#f59e0b';
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 3; i++) {
+        const y = pad.top + (plotH * i / 3);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(w - pad.right, y);
+        ctx.stroke();
+      }
+
+      const drawLine = (key, color, maxValue) => {
+        if (timeline.length < 2) return;
+        ctx.beginPath();
+        for (let i = 0; i < timeline.length; i++) {
+          const x = pad.left + (i / (timeline.length - 1)) * plotW;
+          const y = pad.top + plotH - ((Number(timeline[i][key]) || 0) / maxValue) * plotH;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      };
+
+      drawLine('jobs', accentColor, maxJobs);
+      drawLine('failed', warnColor, maxJobs);
+      drawLine('acked', '#22c55e', maxAcked);
+
+      ctx.fillStyle = labelColor;
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      const labelIndices = [0, Math.floor(timeline.length / 2), timeline.length - 1];
+      for (const i of labelIndices) {
+        const label = String(timeline[i].day || '').slice(5);
+        const x = pad.left + (i / Math.max(timeline.length - 1, 1)) * plotW;
+        ctx.fillText(label, x, h - 6);
+      }
+    },
+
     // ============================
     // 3D GLOBE (Three.js)
     // ============================
+
+    _loadGlobeBubbles() {
+      if (!this._globeBubblesModulePromise) {
+        this._globeBubblesModulePromise = import('/globe-bubbles.js');
+      }
+      return this._globeBubblesModulePromise;
+    },
 
     // ISO 3166-1 numeric → alpha-2 mapping for world-atlas TopoJSON
     _isoNumToAlpha2: {
@@ -736,7 +988,7 @@ function app() {
         const rect = container.getBoundingClientRect();
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, rect.width / rect.height, 0.1, 1000);
-        camera.position.set(0, 0.3, 2.8);
+        camera.position.set(0, 0, 2.8);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(rect.width, rect.height);
@@ -785,8 +1037,8 @@ function app() {
         const gridRadius = 1.008;
         const gridMat = new THREE.LineBasicMaterial({ color: 0x3a5a30, transparent: true, opacity: 0.35 });
 
-        // Latitude lines: every 30 degrees
-        for (let lat = -60; lat <= 60; lat += 30) {
+        // Latitude lines: 11 parallels from -75deg to 75deg
+        for (let lat = -75; lat <= 75; lat += 15) {
           const pts = [];
           const phi = (90 - lat) * Math.PI / 180;
           for (let lng = 0; lng <= 360; lng += 2) {
@@ -801,8 +1053,8 @@ function app() {
           scene.add(new THREE.Line(geo, gridMat));
         }
 
-        // Longitude lines: every 30 degrees
-        for (let lng = 0; lng < 360; lng += 30) {
+        // Longitude lines: 24 meridians, one per time zone
+        for (let lng = 0; lng < 360; lng += 15) {
           const pts = [];
           const theta = (lng + 180) * Math.PI / 180;
           for (let lat = -90; lat <= 90; lat += 2) {
@@ -825,6 +1077,8 @@ function app() {
 
         const pointsGroup = new THREE.Group();
         scene.add(pointsGroup);
+        const bubblesGroup = new THREE.Group();
+        scene.add(bubblesGroup);
         const arcsGroup = new THREE.Group();
         scene.add(arcsGroup);
 
@@ -1017,7 +1271,7 @@ function app() {
 
         // Store references for cleanup and data updates
         this._globe = {
-          THREE, scene, camera, renderer, controls, pointsGroup, arcsGroup,
+          THREE, scene, camera, renderer, controls, pointsGroup, bubblesGroup, arcsGroup,
           globe, globeMat, overlay, overlayMat, countryTexture,
           geoFeatures, addDot, addArc, latLngToVec3, buildPathToCN,
           animFrameId, onResize, flightInterval,
@@ -1035,10 +1289,25 @@ function app() {
     },
 
     updateGlobeCountries(countries) {
-      if (!this._globe || !countries.length) return;
+      if (!this._globe) return;
 
       const COORDS = this._countryCoords;
       const g = this._globe;
+      const clearBubbles = () => {
+        if (!g.bubblesGroup) return;
+        for (let i = g.bubblesGroup.children.length - 1; i >= 0; i--) {
+          const bubble = g.bubblesGroup.children[i];
+          if (bubble.geometry) bubble.geometry.dispose();
+          if (bubble.material) bubble.material.dispose();
+          g.bubblesGroup.remove(bubble);
+        }
+      };
+
+      if (!countries.length) {
+        clearBubbles();
+        g.lastCountries = [];
+        return;
+      }
 
       // Build visitor lookup { 'US': 120, 'CN': 45, ... }
       const visitorMap = {};
@@ -1058,6 +1327,47 @@ function app() {
 
       // Update country list for flight animation
       g.lastCountries = countries;
+
+      this._loadGlobeBubbles()
+        .then(({ buildCountryBubbleSpecs }) => {
+          clearBubbles();
+
+          const bubbleSpecs = buildCountryBubbleSpecs(countries, COORDS);
+          const outward = new g.THREE.Vector3(0, 1, 0);
+
+          for (let i = 0; i < bubbleSpecs.length; i++) {
+            const spec = bubbleSpecs[i];
+            const bubbleGeo = new g.THREE.SphereGeometry(
+              spec.radius,
+              24,
+              24,
+              0,
+              Math.PI * 2,
+              0,
+              Math.PI / 2,
+            );
+            const bubbleMat = new g.THREE.MeshPhongMaterial({
+              color: spec.color,
+              emissive: spec.color,
+              emissiveIntensity: 0.18 + spec.intensity * 0.42,
+              shininess: 38,
+              specular: 0x3e5f12,
+              transparent: true,
+              opacity: spec.opacity,
+              depthWrite: false,
+            });
+            const bubble = new g.THREE.Mesh(bubbleGeo, bubbleMat);
+            const normal = g.latLngToVec3(spec.lat, spec.lng, 1).normalize();
+            bubble.position.copy(normal.clone().multiplyScalar(1.01));
+            bubble.quaternion.setFromUnitVectors(outward, normal);
+            bubble.scale.set(1, spec.height / spec.radius, 1);
+            bubble.renderOrder = 20 + i;
+            g.bubblesGroup.add(bubble);
+          }
+        })
+        .catch((error) => {
+          console.error('Globe bubbles update error:', error);
+        });
     },
 
     updateGlobeRealtime(data) {
@@ -1105,6 +1415,61 @@ function app() {
       const m = Math.floor(sec / 60);
       const s = sec % 60;
       return m + 'm ' + s + 's';
+    },
+
+    fmtMaybe(n, suffix) {
+      if (n == null || Number.isNaN(Number(n))) return '—';
+      return Number(n).toLocaleString() + (suffix || '');
+    },
+
+    fmtCny(n, digits) {
+      if (n == null || Number.isNaN(Number(n))) return '—';
+      const maximumFractionDigits = digits == null ? 0 : digits;
+      return '¥' + Number(n).toLocaleString(undefined, { maximumFractionDigits });
+    },
+
+    fmtRate(n) {
+      if (n == null || Number.isNaN(Number(n))) return '—';
+      return Number(n).toFixed(1) + '%';
+    },
+
+    fmtTime(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString();
+    },
+
+    fmtProviderWindow(row) {
+      if (!row || !row.window_start || !row.window_end || row.window_start === row.window_end) return 'snapshot';
+      const start = new Date(row.window_start * 1000);
+      const end = new Date(row.window_end * 1000);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'snapshot';
+      return `${start.toLocaleDateString()}-${end.toLocaleDateString()}`;
+    },
+
+    statusClass(status) {
+      if (status === 'critical') return 'status-critical';
+      if (status === 'warning') return 'status-warning';
+      if (status === 'unavailable') return 'status-unavailable';
+      return 'status-healthy';
+    },
+
+    severityClass(severity) {
+      if (severity === 'critical') return 'alert-critical';
+      if (severity === 'warning') return 'alert-warning';
+      return 'alert-info';
+    },
+
+    funnelStatusClass(status) {
+      if (status === 'missing') return 'alert-critical';
+      if (status === 'watch') return 'alert-warning';
+      return 'alert-info';
+    },
+
+    burnCostLabel(value) {
+      if (value == null) return 'unknown';
+      return value ? 'closed' : 'open';
     },
 
     fmtDelta(val) {

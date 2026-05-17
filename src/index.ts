@@ -9,8 +9,12 @@ import { statsRoute } from "./routes/stats";
 import { sitesRoute } from "./routes/sites";
 import { funnelsRoute } from "./routes/funnels";
 import { publicStatsRoute } from "./routes/public-stats";
+import { appCollectRoute, appsRoute } from "./routes/apps";
 import { authMiddleware } from "./middleware/auth";
-import { handleWeeklyReport } from "./routes/cron";
+import { handleAppOpsProviderSnapshots, handleWeeklyReport } from "./routes/cron";
+
+const WEEKLY_REPORT_CRON = "0 9 * * 1";
+const APP_OPS_PROVIDER_SNAPSHOT_CRON = "*/5 * * * *";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -22,9 +26,11 @@ app.onError((err, c) => {
 
 // CORS for collect endpoint (permissive, validated per-site in handler)
 app.use("/api/collect", cors({ origin: "*" }));
+app.use("/api/app-collect", cors({ origin: "*" }));
 
 // Public routes
 app.route("/api/collect", collectRoute);
+app.route("/api/app-collect", appCollectRoute);
 app.route("/tracker.js", trackerRoute);
 app.route("/api/auth", authRoute);
 app.route("/api/public/:token", publicStatsRoute);
@@ -33,13 +39,21 @@ app.route("/api/public/:token", publicStatsRoute);
 app.use("/api/stats/*", authMiddleware);
 app.use("/api/sites/*", authMiddleware);
 app.use("/api/funnels/*", authMiddleware);
+app.use("/api/apps", authMiddleware);
+app.use("/api/apps/*", authMiddleware);
 app.route("/api/stats", statsRoute);
 app.route("/api/sites", sitesRoute);
 app.route("/api/funnels", funnelsRoute);
+app.route("/api/apps", appsRoute);
 
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(handleWeeklyReport(env));
+    if (event.cron === WEEKLY_REPORT_CRON) {
+      ctx.waitUntil(handleWeeklyReport(env));
+    }
+    if (event.cron === APP_OPS_PROVIDER_SNAPSHOT_CRON) {
+      ctx.waitUntil(handleAppOpsProviderSnapshots(env));
+    }
   },
 };

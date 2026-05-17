@@ -97,7 +97,8 @@ statsRoute.get("/timeseries", async (c) => {
     SELECT
       (timestamp / ? * ?) as bucket,
       COUNT(*) as pageviews,
-      COUNT(DISTINCT visitor_hash) as visitors
+      COUNT(DISTINCT visitor_hash) as visitors,
+      ROUND(AVG(CASE WHEN duration > 0 THEN duration ELSE NULL END), 0) as avg_duration
     FROM pageviews
     WHERE site_id = ? AND timestamp BETWEEN ? AND ?
     GROUP BY bucket
@@ -113,6 +114,7 @@ statsRoute.get("/timeseries", async (c) => {
       date: new Date((r.bucket as number) * 1000).toISOString(),
       pageviews: r.pageviews,
       visitors: r.visitors,
+      avg_duration: Number(r.avg_duration ?? 0),
     })),
   });
 });
