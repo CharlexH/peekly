@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN" data-locale="zh">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Peekly — Public Dashboard</title>
+  <title>Peekly — 公开看板</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/i18n.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
 </head>
 <body x-data="publicDash()" x-init="init()" data-theme="dark">
@@ -17,11 +18,15 @@
         <span style="font-size:13px;color:var(--text-dim)" x-text="siteDomain"></span>
       </div>
       <div class="header-right">
+        <div class="locale-switch">
+          <button :class="{active: isLocale('zh')}" @click="setLocale('zh')" x-text="t('language.zh')"></button>
+          <button :class="{active: isLocale('en')}" @click="setLocale('en')" x-text="t('language.en')"></button>
+        </div>
         <select x-model="period" @change="fetchAll()">
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d" selected>Last 30 days</option>
-          <option value="90d">Last 90 days</option>
+          <option value="today" x-text="t('period.today')"></option>
+          <option value="7d" x-text="t('period.last7d')"></option>
+          <option value="30d" selected x-text="t('period.last30d')"></option>
+          <option value="90d" x-text="t('period.last90d')"></option>
         </select>
       </div>
     </div>
@@ -29,7 +34,7 @@
     <!-- Metrics -->
     <div class="metrics">
       <div class="metric-card">
-        <div class="label">Visitors</div>
+        <div class="label" x-text="t('metric.visitors')"></div>
         <div class="value accent">
           <span x-text="fmt(summary.visitors)"></span>
           <span class="delta" :class="deltaClass(summary.compare?.visitors)" x-text="fmtDelta(summary.compare?.visitors)" x-show="summary.compare?.visitors != null"></span>
@@ -37,7 +42,7 @@
         <div class="sparkline-wrap"><canvas x-ref="sparkVisitors"></canvas></div>
       </div>
       <div class="metric-card">
-        <div class="label">Pageviews</div>
+        <div class="label" x-text="t('metric.pageviews')"></div>
         <div class="value">
           <span x-text="fmt(summary.pageviews)"></span>
           <span class="delta" :class="deltaClass(summary.compare?.pageviews)" x-text="fmtDelta(summary.compare?.pageviews)" x-show="summary.compare?.pageviews != null"></span>
@@ -45,27 +50,27 @@
         <div class="sparkline-wrap"><canvas x-ref="sparkPageviews"></canvas></div>
       </div>
       <div class="metric-card">
-        <div class="label">Bounce Rate</div>
+        <div class="label" x-text="t('metric.bounceRate')"></div>
         <div class="value" x-text="summary.bounce_rate + '%'"></div>
       </div>
       <div class="metric-card">
-        <div class="label">Avg. Duration</div>
+        <div class="label" x-text="t('metric.avgDuration')"></div>
         <div class="value" x-text="fmtDuration(summary.avg_duration)"></div>
       </div>
     </div>
 
     <!-- Chart -->
     <div class="chart-card">
-      <div class="chart-header"><h3>Traffic</h3></div>
+      <div class="chart-header"><h3 x-text="t('metric.traffic')"></h3></div>
       <div class="chart-container"><canvas x-ref="chart"></canvas></div>
     </div>
 
     <!-- Tables -->
     <div class="tables-grid">
       <div class="table-card">
-        <h3>Top Pages</h3>
+        <h3 x-text="t('table.topPages')"></h3>
         <table>
-          <thead><tr><th>Page</th><th>Views</th></tr></thead>
+          <thead><tr><th x-text="t('table.page')"></th><th x-text="t('table.views')"></th></tr></thead>
           <tbody>
             <template x-for="p in pages" :key="p.path">
               <tr>
@@ -78,13 +83,13 @@
             </template>
           </tbody>
         </table>
-        <div class="empty" x-show="pages.length === 0">No data yet</div>
+        <div class="empty" x-show="pages.length === 0" x-text="t('table.noDataYet')"></div>
       </div>
 
       <div class="table-card">
-        <h3>Sources</h3>
+        <h3 x-text="t('table.sources')"></h3>
         <table>
-          <thead><tr><th>Referrer</th><th>Views</th></tr></thead>
+          <thead><tr><th x-text="t('table.referrer')"></th><th x-text="t('table.views')"></th></tr></thead>
           <tbody>
             <template x-for="r in referrers" :key="r.source">
               <tr>
@@ -97,13 +102,13 @@
             </template>
           </tbody>
         </table>
-        <div class="empty" x-show="referrers.length === 0">No data yet</div>
+        <div class="empty" x-show="referrers.length === 0" x-text="t('table.noDataYet')"></div>
       </div>
 
       <div class="table-card">
-        <h3>Countries</h3>
+        <h3 x-text="t('table.countries')"></h3>
         <table>
-          <thead><tr><th>Country</th><th>Visitors</th></tr></thead>
+          <thead><tr><th x-text="t('table.country')"></th><th x-text="t('metric.visitors')"></th></tr></thead>
           <tbody>
             <template x-for="c in countries" :key="c.country">
               <tr>
@@ -116,24 +121,28 @@
             </template>
           </tbody>
         </table>
-        <div class="empty" x-show="countries.length === 0">No data yet</div>
+        <div class="empty" x-show="countries.length === 0" x-text="t('table.noDataYet')"></div>
       </div>
     </div>
 
     <div style="text-align:center;padding:20px 0;color:var(--text-muted);font-size:12px">
-      Powered by <a href="https://github.com/CharlexH/peekly" style="color:var(--accent);text-decoration:none">Peekly</a>
+      <span x-text="t('footer.poweredBy')"></span> <a href="https://github.com/CharlexH/peekly" style="color:var(--accent);text-decoration:none">Peekly</a>
     </div>
   </div>
 
-  <div class="loading" x-show="!loaded && !error">Loading...</div>
+  <div class="loading" x-show="!loaded && !error" x-text="t('status.loading')"></div>
   <div class="empty" x-show="error" x-text="error"></div>
 
 <script>
 function publicDash() {
   const pathParts = window.location.pathname.split('/');
-  const token = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+  const token = new URLSearchParams(window.location.search).get('token')
+    || pathParts[pathParts.length - 1]
+    || pathParts[pathParts.length - 2];
 
   return {
+    ...window.PeeklyI18n.createState('meta.publicTitle'),
+
     token,
     loaded: false,
     error: '',
@@ -147,16 +156,23 @@ function publicDash() {
     countries: [],
 
     async init() {
+      this.applyLocale();
+      window.addEventListener('peekly:locale-change', () => {
+        this.$nextTick(() => {
+          this.renderSparklines();
+          this.renderChart();
+        });
+      });
       try {
         const info = await this.api('/info');
-        if (!info || info.error) { this.error = info?.error || 'Dashboard not found'; return; }
+        if (!info || info.error) { this.error = info?.error ? this.tx(info.error) : this.t('status.dashboardNotFound'); return; }
         this.siteName = info.name;
         this.siteDomain = info.domain;
         document.title = `${info.name} — Peekly`;
         await this.fetchAll();
         this.loaded = true;
       } catch (e) {
-        this.error = 'Failed to load dashboard';
+        this.error = this.t('status.failedPublicDashboard');
       }
     },
 
@@ -268,12 +284,14 @@ function publicDash() {
       }
     },
 
-    fmt(n) { return n == null ? '0' : Number(n).toLocaleString(); },
+    fmt(n) { return n == null ? '0' : Number(n).toLocaleString(this.locale === 'zh' ? 'zh-CN' : 'en-US'); },
     fmtDuration(sec) {
       if (!sec || sec === 0) return '0s';
       sec = Math.round(Number(sec));
-      if (sec < 60) return sec + 's';
-      return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+      if (sec < 60) return this.locale === 'zh' ? sec + '秒' : sec + 's';
+      return this.locale === 'zh'
+        ? Math.floor(sec / 60) + '分 ' + (sec % 60) + '秒'
+        : Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
     },
     fmtDelta(val) { if (val == null) return ''; return (val > 0 ? '+' : '') + val + '%'; },
     deltaClass(val, inv) { if (val == null || val === 0) return 'neutral'; if (inv) return val < 0 ? 'up' : 'down'; return val > 0 ? 'up' : 'down'; },

@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN" data-locale="zh">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Peekly — Analytics</title>
+  <title>Peekly — 分析</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
+  <script src="/i18n.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
   <script type="importmap">
@@ -24,10 +25,10 @@
     <div class="login-page">
       <div class="login-card">
         <h1>Peekly</h1>
-        <p>Enter your password to access analytics.</p>
+        <p x-text="t('auth.description')"></p>
         <form @submit.prevent="login">
-          <input type="password" x-model="password" placeholder="Password" autofocus>
-          <button type="submit" :disabled="loggingIn" x-text="loggingIn ? 'Signing in...' : 'Sign in'"></button>
+          <input type="password" x-model="password" :placeholder="t('auth.password')" autofocus>
+          <button type="submit" :disabled="loggingIn" x-text="loggingIn ? t('auth.signingIn') : t('auth.signIn')"></button>
           <div class="login-error" x-show="loginError" x-text="loginError"></div>
         </form>
       </div>
@@ -43,13 +44,13 @@
           <h1>Peekly</h1>
           <div class="realtime" x-show="mode === 'sites' && realtimeCount > 0">
             <span class="realtime-dot"></span>
-            <span x-text="realtimeCount + ' online'"></span>
+            <span x-text="fmt(realtimeCount) + ' ' + t('nav.online')"></span>
           </div>
         </div>
         <div class="header-right">
           <div class="mode-switch">
-            <button :class="{active: mode === 'sites'}" @click="setMode('sites')">Sites</button>
-            <button :class="{active: mode === 'apps'}" @click="setMode('apps')">Apps</button>
+            <button :class="{active: mode === 'sites'}" @click="setMode('sites')" x-text="t('nav.sites')"></button>
+            <button :class="{active: mode === 'apps'}" @click="setMode('apps')" x-text="t('nav.apps')"></button>
           </div>
           <select x-show="mode === 'sites'" x-model="selectedSite" @change="fetchAll()">
             <template x-for="s in sites" :key="s.id">
@@ -67,33 +68,37 @@
             </template>
           </select>
           <select x-model="period" @change="onPeriodChange()">
-            <option value="today">Today</option>
-            <option value="7d">7d</option>
-            <option value="30d" selected>30d</option>
-            <option value="90d">90d</option>
-            <option value="custom">Custom</option>
+            <option value="today" x-text="t('period.today')"></option>
+            <option value="7d" x-text="t('period.7d')"></option>
+            <option value="30d" selected x-text="t('period.30d')"></option>
+            <option value="90d" x-text="t('period.90d')"></option>
+            <option value="custom" x-text="t('period.custom')"></option>
           </select>
           <div class="date-range-control" x-show="period === 'custom'">
             <input type="date" x-model="customStart" @change="onCustomRangeChange()">
-            <span>to</span>
+            <span x-text="t('period.to')"></span>
             <input type="date" x-model="customEnd" @change="onCustomRangeChange()">
           </div>
-          <button class="btn btn-sm" x-show="mode === 'sites'" @click="showSiteModal = true">+ Site</button>
-          <button class="btn btn-sm" x-show="mode === 'sites'" @click="toggleShare" x-text="currentShareToken ? 'Unshare' : 'Share'"></button>
-          <button class="theme-toggle" @click="toggleTheme" x-text="theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'"></button>
-          <button class="logout-btn" @click="logout">Logout</button>
+          <button class="btn btn-sm" x-show="mode === 'sites'" @click="showSiteModal = true" x-text="t('action.addSite')"></button>
+          <button class="btn btn-sm" x-show="mode === 'sites'" @click="toggleShare" x-text="currentShareToken ? t('action.unshare') : t('action.share')"></button>
+          <div class="locale-switch">
+            <button :class="{active: isLocale('zh')}" @click="setLocale('zh')" x-text="t('language.zh')"></button>
+            <button :class="{active: isLocale('en')}" @click="setLocale('en')" x-text="t('language.en')"></button>
+          </div>
+          <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? t('action.themeLight') : t('action.themeDark')" x-text="theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19'"></button>
+          <button class="logout-btn" @click="logout" x-text="t('nav.logout')"></button>
         </div>
       </div>
 
       <!-- Share link -->
       <div class="snippet share-bar" x-show="mode === 'sites' && currentShareToken">
         <span x-text="shareUrl" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-        <button class="btn btn-sm" @click="copyShare">Copy</button>
+        <button class="btn btn-sm" @click="copyShare" x-text="t('action.copy')"></button>
       </div>
 
       <!-- App Ops -->
       <div class="app-ops" x-show="mode === 'apps'">
-        <div class="ops-loading" x-show="appOpsLoading">Loading App Ops...</div>
+        <div class="ops-loading" x-show="appOpsLoading" x-text="t('status.loadingAppOps')"></div>
         <div class="ops-loading ops-error" x-show="appOpsError" x-text="appOpsError"></div>
 
         <template x-if="appOverview && !appOpsLoading">
@@ -102,47 +107,47 @@
               <section class="ops-block ops-business-block">
                 <div class="ops-block-header">
                   <div>
-                    <div class="ops-kicker">Business Snapshot</div>
+                    <div class="ops-kicker" x-text="t('ops.businessSnapshot')"></div>
                     <h2 x-text="appOverview.app.name + ' / ' + appOverview.environment.label"></h2>
-                    <p x-text="'Window: ' + rangeLabel(appOverview.range) + ' · Last sync: ' + fmtSyncTime(appOpsLastSyncedAt)"></p>
-                    <p class="ops-source-line" x-text="'Source: ' + appOverview.growth.source.active_subscribers + ' + ' + appOverview.growth.source.sales"></p>
+                    <p x-text="t('ops.window') + ': ' + rangeLabel(appOverview.range) + ' · ' + t('ops.lastSync') + ': ' + fmtSyncTime(appOpsLastSyncedAt)"></p>
+                    <p class="ops-source-line" x-text="t('ops.source') + ': ' + appOverview.growth.source.active_subscribers + ' + ' + appOverview.growth.source.sales"></p>
                   </div>
                   <div class="ops-action-note primary">
-                    <span>Do this first</span>
-                    <strong x-text="primaryAction().title"></strong>
-                    <p x-text="primaryAction().body"></p>
+                    <span x-text="t('ops.doFirst')"></span>
+                    <strong x-text="tx(primaryAction().title)"></strong>
+                    <p x-text="tx(primaryAction().body)"></p>
                   </div>
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-business">
                   <div class="ops-kpi">
-                    <span>App Events</span>
+                    <span x-text="t('ops.appEvents')"></span>
                     <strong x-text="fmt(appOverview.behavior.events)"></strong>
-                    <small x-text="fmt(appOverview.behavior.installs) + ' installs · ' + fmt(appOverview.behavior.sessions) + ' sessions'"></small>
+                    <small x-text="t('ops.installsSessions', { installs: fmt(appOverview.behavior.installs), sessions: fmt(appOverview.behavior.sessions) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Story Jobs</span>
+                    <span x-text="t('ops.storyJobs')"></span>
                     <strong x-text="fmt(appOverview.ledger.generation.total)"></strong>
-                    <small x-text="fmt(appOverview.ledger.generation.acked) + ' acked · ' + fmt(appOverview.ledger.generation.failed) + ' failed'"></small>
+                    <small x-text="t('ops.storyJobsAckedFailed', { acked: fmt(appOverview.ledger.generation.acked), failed: fmt(appOverview.ledger.generation.failed) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>First Story Done</span>
+                    <span x-text="t('ops.firstStoryDone')"></span>
                     <strong x-text="fmt(funnelActual('first_story_completed'))"></strong>
-                    <small x-text="'Playback ' + fmt(funnelActual('first_playback_completed'))"></small>
+                    <small x-text="t('ops.playback', { value: fmt(funnelActual('first_playback_completed')) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Paywall Viewed</span>
+                    <span x-text="t('ops.paywallViewed')"></span>
                     <strong x-text="fmt(funnelActual('paywall_viewed'))"></strong>
-                    <small x-text="'Plan selected ' + fmt(funnelActual('plan_selected'))"></small>
+                    <small x-text="t('ops.planSelected', { value: fmt(funnelActual('plan_selected')) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Purchase Success</span>
+                    <span x-text="t('ops.purchaseSuccess')"></span>
                     <strong x-text="fmt(funnelActual('purchase_succeeded'))"></strong>
-                    <small x-text="'Started ' + fmt(funnelActual('purchase_started'))"></small>
+                    <small x-text="t('ops.purchaseStarted', { value: fmt(funnelActual('purchase_started')) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Registered Users</span>
+                    <span x-text="t('ops.registeredUsers')"></span>
                     <strong x-text="fmt(appOverview.growth.target.actual_registered_users)"></strong>
-                    <small>Free-trial exposure</small>
+                    <small x-text="t('ops.freeTrialExposure')"></small>
                   </div>
                 </div>
               </section>
@@ -151,51 +156,51 @@
                 <div class="ops-block-header">
                   <div class="ops-money-summary">
                     <div>
-                      <div class="ops-kicker">Money Snapshot</div>
+                      <div class="ops-kicker" x-text="t('ops.moneySnapshot')"></div>
                       <h2 x-text="fmtCny(appOverview.growth.target.monthly_revenue_cny)"></h2>
-                      <p>Monthly gross sales target</p>
+                      <p x-text="t('ops.monthlyGrossSalesTarget')"></p>
                     </div>
                     <label class="ops-inline-input">
-                      <span>Target</span>
+                      <span x-text="t('ops.target')"></span>
                       <input type="number" min="1" step="1000" x-model.number="growthTargetCny" @change="saveGrowthTarget()">
                     </label>
                   </div>
                   <div class="ops-action-note">
-                    <span>Cost control</span>
+                    <span x-text="t('ops.costControl')"></span>
                     <strong x-text="costRiskTitle()"></strong>
                     <p x-text="costRiskBody()"></p>
                   </div>
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-money">
                   <div class="ops-kpi">
-                    <span>Sales Progress</span>
+                    <span x-text="t('ops.salesProgress')"></span>
                     <strong x-text="fmtRate(appOverview.growth.revenue.progress_percent)"></strong>
                     <small x-text="fmtCny(appOverview.growth.revenue.estimated_period_sales_cny) + ' / ' + fmtCny(appOverview.growth.target.period_revenue_cny)"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Revenue Gap</span>
+                    <span x-text="t('ops.revenueGap')"></span>
                     <strong x-text="fmtCny(appOverview.growth.revenue.gap_cny)"></strong>
-                    <small x-text="fmt(appOverview.growth.target.required_paid_orders) + ' paid orders needed'"></small>
+                    <small x-text="t('ops.ordersNeeded', { count: fmt(appOverview.growth.target.required_paid_orders) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Active MRR</span>
+                    <span x-text="t('ops.activeMrr')"></span>
                     <strong x-text="fmtCny(appOverview.growth.revenue.active_subscriber_mrr_cny)"></strong>
-                    <small x-text="fmt(appOverview.growth.revenue.active_subscribers.total) + ' active · target ' + fmt(appOverview.growth.target.required_active_payers)"></small>
+                    <small x-text="t('ops.activeTarget', { active: fmt(appOverview.growth.revenue.active_subscribers.total), target: fmt(appOverview.growth.target.required_active_payers) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Contribution</span>
+                    <span x-text="t('ops.contribution')"></span>
                     <strong x-text="fmtCny(appOverview.growth.costs.estimated_period_contribution_cny)"></strong>
-                    <small>After Apple, paid AI, trial</small>
+                    <small x-text="t('ops.afterCosts')"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>AI Cost</span>
+                    <span x-text="t('ops.aiCost')"></span>
                     <strong x-text="fmtCny(appOverview.growth.costs.actual_paid_ai_cost_cny)"></strong>
-                    <small x-text="'Target scale ' + fmtCny(appOverview.growth.costs.target_paid_ai_cost_cny) + ' / month'"></small>
+                    <small x-text="t('ops.targetScaleMonth', { value: fmtCny(appOverview.growth.costs.target_paid_ai_cost_cny) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Trial Exposure</span>
+                    <span x-text="t('ops.trialExposure')"></span>
                     <strong x-text="fmtCny(appOverview.growth.costs.actual_free_trial_cost_cny)"></strong>
-                    <small x-text="'Budget ' + fmtCny(appOverview.growth.costs.target_free_trial_cost_cny)"></small>
+                    <small x-text="t('ops.budget', { value: fmtCny(appOverview.growth.costs.target_free_trial_cost_cny) })"></small>
                   </div>
                 </div>
               </section>
@@ -203,25 +208,25 @@
               <section class="ops-block ops-funnel-block">
                 <div class="ops-block-header">
                   <div>
-                    <div class="ops-kicker">Conversion Funnel</div>
-                    <h2>Revenue Funnel</h2>
-                    <p x-text="'Actual ' + fmtRate(appOverview.growth.funnel.overall_conversion_percent) + ' · target ' + fmtRate(appOverview.growth.funnel.target_overall_conversion_percent)"></p>
+                    <div class="ops-kicker" x-text="t('ops.conversionFunnel')"></div>
+                    <h2 x-text="t('ops.revenueFunnel')"></h2>
+                    <p x-text="t('ops.actualTarget', { actual: fmtRate(appOverview.growth.funnel.overall_conversion_percent), target: fmtRate(appOverview.growth.funnel.target_overall_conversion_percent) })"></p>
                   </div>
                   <div class="ops-action-note compact">
-                    <span>Current bottleneck</span>
+                    <span x-text="t('ops.currentBottleneck')"></span>
                     <strong x-text="bottleneckTitle()"></strong>
                     <p x-text="bottleneckBody()"></p>
                   </div>
                 </div>
                 <div class="ops-table-free-scroll">
                   <table class="growth-funnel-table">
-                    <thead><tr><th>Step</th><th>Volume progress</th><th>Gap</th><th>Step conversion</th></tr></thead>
+                    <thead><tr><th x-text="t('ops.step')"></th><th x-text="t('ops.volumeProgress')"></th><th x-text="t('ops.gap')"></th><th x-text="t('ops.stepConversion')"></th></tr></thead>
                     <tbody>
                       <template x-for="(step, index) in appOverview.growth.funnel.steps" :key="step.id">
                         <tr>
                           <td>
                             <span class="growth-step" :class="funnelStatusClass(step.status)"></span>
-                            <span x-text="step.label"></span>
+                            <span x-text="tx(step.label)"></span>
                           </td>
                           <td>
                             <div class="funnel-progress-row">
@@ -251,16 +256,16 @@
                   <div class="ops-alert-list">
                     <template x-for="item in appOverview.growth.recommendations" :key="item.title">
                       <div class="ops-alert" :class="severityClass(item.severity)">
-                        <strong x-text="item.title"></strong>
-                        <span x-text="item.body"></span>
+                        <strong x-text="tx(item.title)"></strong>
+                        <span x-text="tx(item.body)"></span>
                       </div>
                     </template>
                   </div>
                   <div class="growth-assumptions">
-                    <span x-text="'Monthly ¥' + fmt(appOverview.growth.assumptions.monthlyPlanPriceCny)"></span>
-                    <span x-text="'Yearly ¥' + fmt(appOverview.growth.assumptions.yearlyPlanPriceCny)"></span>
-                    <span x-text="'Paid AI ¥' + fmt(appOverview.growth.assumptions.paidUserAiCostMonthlyCny) + '/user/mo'"></span>
-                    <span x-text="'Trial ¥' + fmt(appOverview.growth.assumptions.freeTrialCostPerRegisteredUserCny) + '/registered'"></span>
+                    <span x-text="t('ops.monthlyPlan', { value: fmt(appOverview.growth.assumptions.monthlyPlanPriceCny) })"></span>
+                    <span x-text="t('ops.yearlyPlan', { value: fmt(appOverview.growth.assumptions.yearlyPlanPriceCny) })"></span>
+                    <span x-text="t('ops.paidAi', { value: fmt(appOverview.growth.assumptions.paidUserAiCostMonthlyCny) })"></span>
+                    <span x-text="t('ops.trialCost', { value: fmt(appOverview.growth.assumptions.freeTrialCostPerRegisteredUserCny) })"></span>
                   </div>
                 </div>
               </section>
@@ -268,90 +273,90 @@
               <section class="ops-block ops-health-block">
                 <div class="ops-block-header">
                   <div>
-                    <div class="ops-kicker">System Health</div>
-                    <h2 x-text="appOverview.health.label"></h2>
-                    <p x-text="'Cost gate ' + burnCostLabel(appOverview.ledger.system.burn_cost_disabled) + ' · ' + rangeLabel(appOverview.range)"></p>
+                    <div class="ops-kicker" x-text="t('ops.systemHealth')"></div>
+                    <h2 x-text="tx(appOverview.health.label)"></h2>
+                    <p x-text="t('ops.costGate') + ' ' + burnCostLabel(appOverview.ledger.system.burn_cost_disabled) + ' · ' + rangeLabel(appOverview.range)"></p>
                   </div>
                   <div class="ops-status-pill" :class="statusClass(appOverview.health.status)">
-                    <span x-text="appOverview.health.label"></span>
+                    <span x-text="tx(appOverview.health.label)"></span>
                     <small x-text="appOverview.environment.label"></small>
                   </div>
                 </div>
                 <div class="ops-kpi-grid ops-kpi-grid-health">
                   <div class="ops-kpi">
-                    <span>Success</span>
+                    <span x-text="t('ops.success')"></span>
                     <strong x-text="fmtMaybe(appOverview.ledger.generation.success_rate, '%')"></strong>
-                    <small x-text="fmt(appOverview.ledger.generation.acked) + ' acked / ' + fmt(appOverview.ledger.generation.total) + ' jobs'"></small>
+                    <small x-text="t('ops.ackedJobs', { acked: fmt(appOverview.ledger.generation.acked), total: fmt(appOverview.ledger.generation.total) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Gen Time</span>
+                    <span x-text="t('ops.genTime')"></span>
                     <strong x-text="fmtDuration((appOverview.ledger.generation.avg_text_seconds || 0) + (appOverview.ledger.generation.avg_tts_seconds || 0))"></strong>
-                    <small x-text="'Text ' + fmtDuration(appOverview.ledger.generation.avg_text_seconds) + ' · TTS ' + fmtDuration(appOverview.ledger.generation.avg_tts_seconds)"></small>
+                    <small x-text="t('ops.textTts', { text: fmtDuration(appOverview.ledger.generation.avg_text_seconds), tts: fmtDuration(appOverview.ledger.generation.avg_tts_seconds) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>App Quota</span>
+                    <span x-text="t('ops.appQuota')"></span>
                     <strong x-text="fmtMaybe(appOverview.ledger.quota.remaining)"></strong>
-                    <small x-text="'Used ' + fmtMaybe(appOverview.ledger.quota.used) + ' · Reserved ' + fmtMaybe(appOverview.ledger.quota.reserved)"></small>
+                    <small x-text="t('ops.usedReserved', { used: fmtMaybe(appOverview.ledger.quota.used), reserved: fmtMaybe(appOverview.ledger.quota.reserved) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>API Tokens</span>
+                    <span x-text="t('ops.apiTokens')"></span>
                     <strong x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.total_tokens)"></strong>
-                    <small x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.attempts) + ' text attempts'"></small>
+                    <small x-text="t('ops.textAttempts', { value: fmtMaybe(appOverview.ledger.provider.token_usage?.attempts) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Failures</span>
+                    <span x-text="t('ops.failures')"></span>
                     <strong x-text="fmt(appOverview.ledger.provider.failed_attempts)"></strong>
-                    <small x-text="fmt(appOverview.ledger.provider.active_leases) + ' active leases'"></small>
+                    <small x-text="t('ops.activeLeases', { value: fmt(appOverview.ledger.provider.active_leases) })"></small>
                   </div>
                   <div class="ops-kpi">
-                    <span>Balance</span>
+                    <span x-text="t('ops.balance')"></span>
                     <strong x-text="providerUsageLabel('account_available_balance')"></strong>
-                    <small>Latest snapshot</small>
+                    <small x-text="t('ops.latestSnapshot')"></small>
                   </div>
                 </div>
                 <div class="ops-health-stack">
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
                       <div>
-                        <h3>Generation Trend</h3>
-                        <span x-text="'jobs / acked / failed · ' + rangeLabel(appOverview.range)"></span>
+                        <h3 x-text="t('ops.generationTrend')"></h3>
+                        <span x-text="t('ops.jobsAckedFailed', { range: rangeLabel(appOverview.range) })"></span>
                       </div>
                     </div>
                     <div class="ops-chart-wrap">
                       <canvas x-ref="appOpsChart"></canvas>
                     </div>
                     <div class="chart-legend">
-                      <span><i class="legend-dot jobs"></i>Jobs</span>
-                      <span><i class="legend-dot acked"></i>Acked</span>
-                      <span><i class="legend-dot failed"></i>Failed</span>
+                      <span><i class="legend-dot jobs"></i><span x-text="t('ops.jobs')"></span></span>
+                      <span><i class="legend-dot acked"></i><span x-text="t('ops.acked')"></span></span>
+                      <span><i class="legend-dot failed"></i><span x-text="t('ops.failed')"></span></span>
                     </div>
-                    <div class="empty" x-show="!appOverview.ledger.timeline.length">No generation jobs in this period</div>
+                    <div class="empty" x-show="!appOverview.ledger.timeline.length" x-text="t('ops.noGenerationJobs')"></div>
                   </div>
 
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
-                      <h3>Alerts</h3>
-                      <span x-text="appOverview.alerts.computed.length + ' computed'"></span>
+                      <h3 x-text="t('ops.alerts')"></h3>
+                      <span x-text="t('ops.computed', { count: fmt(appOverview.alerts.computed.length) })"></span>
                     </div>
                     <div class="ops-alert-list ops-scroll">
                       <template x-for="alert in appOverview.alerts.computed" :key="alert.title">
                         <div class="ops-alert" :class="severityClass(alert.severity)">
-                          <strong x-text="alert.title"></strong>
-                          <span x-text="alert.body"></span>
+                          <strong x-text="tx(alert.title)"></strong>
+                          <span x-text="tx(alert.body)"></span>
                         </div>
                       </template>
-                      <div class="empty" x-show="appOverview.alerts.computed.length === 0">No active alerts</div>
+                      <div class="empty" x-show="appOverview.alerts.computed.length === 0" x-text="t('ops.noActiveAlerts')"></div>
                     </div>
                   </div>
 
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
-                      <h3>Provider Attempts</h3>
-                      <span x-text="fmt(appOverview.ledger.provider.failed_attempts) + ' failed'"></span>
+                      <h3 x-text="t('ops.providerAttempts')"></h3>
+                      <span x-text="t('ops.failedCount', { count: fmt(appOverview.ledger.provider.failed_attempts) })"></span>
                     </div>
                     <div class="ops-table-scroll">
                       <table>
-                        <thead><tr><th>Kind</th><th>Status</th><th>Error</th><th>Count</th></tr></thead>
+                        <thead><tr><th x-text="t('ops.kind')"></th><th x-text="t('ops.status')"></th><th x-text="t('ops.error')"></th><th x-text="t('table.count')"></th></tr></thead>
                         <tbody>
                           <template x-for="row in appOverview.ledger.provider.attempts" :key="row.kind + row.status + row.error_code">
                             <tr>
@@ -364,30 +369,30 @@
                         </tbody>
                       </table>
                     </div>
-                    <div class="empty" x-show="appOverview.ledger.provider.attempts.length === 0">No provider attempts in this period</div>
+                    <div class="empty" x-show="appOverview.ledger.provider.attempts.length === 0" x-text="t('ops.noProviderAttempts')"></div>
                   </div>
 
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
                       <div>
-                        <h3>Ark Tokens</h3>
-                        <span x-text="(appOverview.ledger.provider.token_usage?.available === false) ? 'waiting for migration' : fmt(appOverview.ledger.provider.token_usage?.attempts || 0) + ' text attempts'"></span>
+                        <h3 x-text="t('ops.arkTokens')"></h3>
+                        <span x-text="(appOverview.ledger.provider.token_usage?.available === false) ? t('ops.waitingMigration') : t('ops.textAttempts', { value: fmt(appOverview.ledger.provider.token_usage?.attempts || 0) })"></span>
                       </div>
                     </div>
                     <div class="ops-table-scroll">
                       <table>
-                        <thead><tr><th>Metric</th><th>Tokens</th></tr></thead>
+                        <thead><tr><th x-text="t('ops.metric')"></th><th x-text="t('ops.tokens')"></th></tr></thead>
                         <tbody>
-                          <tr><td>Total</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.total_tokens || 0)"></td></tr>
-                          <tr><td>Input</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.input_tokens || 0)"></td></tr>
-                          <tr><td>Output</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.output_tokens || 0)"></td></tr>
-                          <tr><td>Reasoning</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.reasoning_tokens || 0)"></td></tr>
-                          <tr><td>Cached input</td><td x-text="fmt(appOverview.ledger.provider.token_usage?.cached_input_tokens || 0)"></td></tr>
-                          <tr><td>Avg / attempt</td><td x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.avg_total_tokens_per_attempt)"></td></tr>
+                          <tr><td x-text="t('ops.total')"></td><td x-text="fmt(appOverview.ledger.provider.token_usage?.total_tokens || 0)"></td></tr>
+                          <tr><td x-text="t('ops.input')"></td><td x-text="fmt(appOverview.ledger.provider.token_usage?.input_tokens || 0)"></td></tr>
+                          <tr><td x-text="t('ops.output')"></td><td x-text="fmt(appOverview.ledger.provider.token_usage?.output_tokens || 0)"></td></tr>
+                          <tr><td x-text="t('ops.reasoning')"></td><td x-text="fmt(appOverview.ledger.provider.token_usage?.reasoning_tokens || 0)"></td></tr>
+                          <tr><td x-text="t('ops.cachedInput')"></td><td x-text="fmt(appOverview.ledger.provider.token_usage?.cached_input_tokens || 0)"></td></tr>
+                          <tr><td x-text="t('ops.avgAttempt')"></td><td x-text="fmtMaybe(appOverview.ledger.provider.token_usage?.avg_total_tokens_per_attempt)"></td></tr>
                         </tbody>
                       </table>
                       <table x-show="(appOverview.ledger.provider.token_usage?.models || []).length > 0">
-                        <thead><tr><th>Model</th><th>Attempts</th><th>Total</th><th>Avg</th></tr></thead>
+                        <thead><tr><th x-text="t('ops.model')"></th><th x-text="t('ops.attempts')"></th><th x-text="t('ops.total')"></th><th x-text="t('ops.avg')"></th></tr></thead>
                         <tbody>
                           <template x-for="model in appOverview.ledger.provider.token_usage?.models || []" :key="(model.model_id || 'unknown') + (model.endpoint_id || '')">
                             <tr>
@@ -400,20 +405,20 @@
                         </tbody>
                       </table>
                     </div>
-                    <div class="empty" x-show="appOverview.ledger.provider.token_usage?.available === false">Nians ledger token columns are not deployed yet</div>
+                    <div class="empty" x-show="appOverview.ledger.provider.token_usage?.available === false" x-text="t('ops.tokenColumnsMissing')"></div>
                   </div>
 
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
                       <div>
-                        <h3>Volcengine Cost & Usage</h3>
-                        <span>balance, monthly bills, and speech usage snapshots</span>
+                        <h3 x-text="t('ops.volcengineUsage')"></h3>
+                        <span x-text="t('ops.volcengineUsageDescription')"></span>
                       </div>
-                      <button class="btn btn-sm" @click="syncVolcengineSnapshot" :disabled="providerSnapshotLoading" x-text="providerSnapshotLoading ? 'Syncing' : 'Sync'"></button>
+                      <button class="btn btn-sm" @click="syncVolcengineSnapshot" :disabled="providerSnapshotLoading" x-text="providerSnapshotLoading ? t('action.syncing') : t('action.sync')"></button>
                     </div>
                     <div class="ops-table-scroll">
                       <table>
-                        <thead><tr><th>Metric</th><th>Value</th><th>Window</th><th>Updated</th></tr></thead>
+                        <thead><tr><th x-text="t('ops.metric')"></th><th x-text="t('ops.value')"></th><th x-text="t('ops.window')"></th><th x-text="t('ops.updated')"></th></tr></thead>
                         <tbody>
                           <template x-for="row in appOverview.provider_usage" :key="row.provider + row.metric + row.captured_at">
                             <tr>
@@ -426,19 +431,19 @@
                         </tbody>
                       </table>
                     </div>
-                    <div class="empty" x-show="appOverview.provider_usage.length === 0">Volcengine balance and usage snapshots are not connected yet</div>
+                    <div class="empty" x-show="appOverview.provider_usage.length === 0" x-text="t('ops.providerUsageEmpty')"></div>
                   </div>
 
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
                       <div>
-                        <h3>Volcengine Provider Limits</h3>
-                        <span>speech concurrency / qps quota signals</span>
+                        <h3 x-text="t('ops.volcengineLimits')"></h3>
+                        <span x-text="t('ops.volcengineLimitsDescription')"></span>
                       </div>
                     </div>
                     <div class="ops-table-scroll">
                       <table>
-                        <thead><tr><th>Quota</th><th>Peak</th><th>Limit</th><th>Headroom</th><th>Updated</th></tr></thead>
+                        <thead><tr><th x-text="t('ops.quota')"></th><th x-text="t('ops.peak')"></th><th x-text="t('ops.limit')"></th><th x-text="t('ops.headroom')"></th><th x-text="t('ops.updated')"></th></tr></thead>
                         <tbody>
                           <template x-for="row in appOverview.provider_quota" :key="row.provider + row.quota_type + row.captured_at">
                             <tr>
@@ -452,17 +457,17 @@
                         </tbody>
                       </table>
                     </div>
-                    <div class="empty" x-show="appOverview.provider_quota.length === 0">Speech provider limit snapshots need VOLCENGINE_SPEECH_APP_ID</div>
+                    <div class="empty" x-show="appOverview.provider_quota.length === 0" x-text="t('ops.providerQuotaEmpty')"></div>
                   </div>
 
                   <div class="ops-subsection">
                     <div class="ops-panel-header">
-                      <h3>Event Mix</h3>
-                      <span x-text="fmt(appOverview.behavior.events) + ' events'"></span>
+                      <h3 x-text="t('ops.eventMix')"></h3>
+                      <span x-text="t('ops.events', { count: fmt(appOverview.behavior.events) })"></span>
                     </div>
                     <div class="ops-table-scroll">
                       <table>
-                        <thead><tr><th>Event</th><th>Count</th><th>Installs</th></tr></thead>
+                        <thead><tr><th x-text="t('ops.event')"></th><th x-text="t('table.count')"></th><th x-text="t('ops.installs')"></th></tr></thead>
                         <tbody>
                           <template x-for="row in appOverview.behavior.top_events" :key="row.event_name">
                             <tr>
@@ -474,7 +479,7 @@
                         </tbody>
                       </table>
                     </div>
-                    <div class="empty" x-show="appOverview.behavior.top_events.length === 0">No app events in this period</div>
+                    <div class="empty" x-show="appOverview.behavior.top_events.length === 0" x-text="t('ops.noAppEvents')"></div>
                   </div>
                 </div>
               </section>
@@ -489,7 +494,7 @@
         <div class="sidebar sidebar-left">
           <div class="sidebar-metric">
             <div class="sidebar-metric-header">
-              <span class="label">Visitors</span>
+              <span class="label" x-text="t('metric.visitors')"></span>
               <span class="delta" :class="deltaClass(summary.compare?.visitors)" x-text="fmtDelta(summary.compare?.visitors)" x-show="summary.compare?.visitors != null"></span>
             </div>
             <div class="value accent" x-text="fmt(summary.visitors)"></div>
@@ -497,7 +502,7 @@
           </div>
           <div class="sidebar-metric">
             <div class="sidebar-metric-header">
-              <span class="label">Pageviews</span>
+              <span class="label" x-text="t('metric.pageviews')"></span>
               <span class="delta" :class="deltaClass(summary.compare?.pageviews)" x-text="fmtDelta(summary.compare?.pageviews)" x-show="summary.compare?.pageviews != null"></span>
             </div>
             <div class="value" x-text="fmt(summary.pageviews)"></div>
@@ -505,7 +510,7 @@
           </div>
           <div class="sidebar-metric">
             <div class="sidebar-metric-header">
-              <span class="label">Avg. Duration</span>
+              <span class="label" x-text="t('metric.avgDuration')"></span>
               <span class="delta" :class="deltaClass(summary.compare?.avg_duration)" x-text="fmtDelta(summary.compare?.avg_duration)" x-show="summary.compare?.avg_duration != null"></span>
             </div>
             <div class="value" x-text="fmtDuration(summary.avg_duration)"></div>
@@ -513,7 +518,7 @@
           </div>
           <div class="sidebar-metric sidebar-metric-compact">
             <div class="sidebar-metric-header">
-              <span class="label">Bounce</span>
+              <span class="label" x-text="t('metric.bounceRate')"></span>
               <span class="delta" :class="deltaClass(summary.compare?.bounce_rate, true)" x-text="fmtDelta(summary.compare?.bounce_rate)" x-show="summary.compare?.bounce_rate != null"></span>
             </div>
             <div class="value" x-text="summary.bounce_rate + '%'"></div>
@@ -525,27 +530,27 @@
           <!-- Globe HUD overlay -->
           <div class="globe-hud" x-show="realtimeCount > 0">
             <div class="globe-hud-count" x-text="realtimeCount"></div>
-            <div class="globe-hud-label">active visitors</div>
+            <div class="globe-hud-label" x-text="t('metric.activeVisitors')"></div>
           </div>
         </div>
 
         <!-- Right Sidebar: Traffic + Top Pages -->
         <div class="sidebar sidebar-right">
           <div class="sidebar-chart">
-            <div class="sidebar-chart-title">Traffic</div>
+            <div class="sidebar-chart-title" x-text="t('metric.traffic')"></div>
             <div class="sidebar-chart-container">
               <canvas x-ref="chart"></canvas>
             </div>
           </div>
           <div class="sidebar-section">
-            <div class="sidebar-section-title">Top Pages</div>
+            <div class="sidebar-section-title" x-text="t('table.topPages')"></div>
             <template x-for="p in pages.slice(0, 8)" :key="p.path">
               <div class="sidebar-row">
                 <span class="sidebar-row-label" x-text="p.path"></span>
                 <span class="sidebar-row-value" x-text="fmt(p.views)"></span>
               </div>
             </template>
-            <div class="sidebar-empty" x-show="pages.length === 0">No data</div>
+            <div class="sidebar-empty" x-show="pages.length === 0" x-text="t('table.noData')"></div>
           </div>
         </div>
       </div>
@@ -554,9 +559,9 @@
       <div class="tables-grid" x-show="mode === 'sites'">
         <!-- Pages -->
         <div class="table-card">
-          <h3>Top Pages</h3>
+          <h3 x-text="t('table.topPages')"></h3>
           <table>
-            <thead><tr><th>Page</th><th>Views</th></tr></thead>
+            <thead><tr><th x-text="t('table.page')"></th><th x-text="t('table.views')"></th></tr></thead>
             <tbody>
               <template x-for="p in pages" :key="p.path">
                 <tr>
@@ -569,14 +574,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="pages.length === 0">No data yet</div>
+          <div class="empty" x-show="pages.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- Referrers -->
         <div class="table-card">
-          <h3>Sources</h3>
+          <h3 x-text="t('table.sources')"></h3>
           <table>
-            <thead><tr><th>Referrer</th><th>Views</th></tr></thead>
+            <thead><tr><th x-text="t('table.referrer')"></th><th x-text="t('table.views')"></th></tr></thead>
             <tbody>
               <template x-for="r in referrers" :key="r.source">
                 <tr>
@@ -589,14 +594,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="referrers.length === 0">No data yet</div>
+          <div class="empty" x-show="referrers.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- Countries -->
         <div class="table-card">
-          <h3>Countries</h3>
+          <h3 x-text="t('table.countries')"></h3>
           <table>
-            <thead><tr><th>Country</th><th>Visitors</th></tr></thead>
+            <thead><tr><th x-text="t('table.country')"></th><th x-text="t('metric.visitors')"></th></tr></thead>
             <tbody>
               <template x-for="c in countries" :key="c.country">
                 <tr>
@@ -609,14 +614,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="countries.length === 0">No data yet</div>
+          <div class="empty" x-show="countries.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- Browsers -->
         <div class="table-card">
-          <h3>Browsers</h3>
+          <h3 x-text="t('table.browsers')"></h3>
           <table>
-            <thead><tr><th>Browser</th><th>Count</th></tr></thead>
+            <thead><tr><th x-text="t('table.browser')"></th><th x-text="t('table.count')"></th></tr></thead>
             <tbody>
               <template x-for="b in browsers" :key="b.name">
                 <tr>
@@ -629,14 +634,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="browsers.length === 0">No data yet</div>
+          <div class="empty" x-show="browsers.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- OS -->
         <div class="table-card">
-          <h3>Operating Systems</h3>
+          <h3 x-text="t('table.operatingSystems')"></h3>
           <table>
-            <thead><tr><th>OS</th><th>Count</th></tr></thead>
+            <thead><tr><th x-text="t('table.os')"></th><th x-text="t('table.count')"></th></tr></thead>
             <tbody>
               <template x-for="o in osData" :key="o.name">
                 <tr>
@@ -649,14 +654,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="osData.length === 0">No data yet</div>
+          <div class="empty" x-show="osData.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- Devices -->
         <div class="table-card">
-          <h3>Devices</h3>
+          <h3 x-text="t('table.devices')"></h3>
           <table>
-            <thead><tr><th>Type</th><th>Count</th></tr></thead>
+            <thead><tr><th x-text="t('table.type')"></th><th x-text="t('table.count')"></th></tr></thead>
             <tbody>
               <template x-for="d in devices" :key="d.device">
                 <tr>
@@ -669,14 +674,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="devices.length === 0">No data yet</div>
+          <div class="empty" x-show="devices.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- UTM Sources -->
         <div class="table-card" x-show="utmSources.length > 0">
-          <h3>UTM Sources</h3>
+          <h3 x-text="t('table.utmSources')"></h3>
           <table>
-            <thead><tr><th>Source</th><th>Visitors</th></tr></thead>
+            <thead><tr><th x-text="t('table.source')"></th><th x-text="t('metric.visitors')"></th></tr></thead>
             <tbody>
               <template x-for="u in utmSources" :key="u.name">
                 <tr>
@@ -693,9 +698,9 @@
 
         <!-- UTM Campaigns -->
         <div class="table-card" x-show="utmCampaigns.length > 0">
-          <h3>UTM Campaigns</h3>
+          <h3 x-text="t('table.utmCampaigns')"></h3>
           <table>
-            <thead><tr><th>Campaign</th><th>Visitors</th></tr></thead>
+            <thead><tr><th x-text="t('table.campaign')"></th><th x-text="t('metric.visitors')"></th></tr></thead>
             <tbody>
               <template x-for="u in utmCampaigns" :key="u.name">
                 <tr>
@@ -712,9 +717,9 @@
 
         <!-- Entry Pages -->
         <div class="table-card">
-          <h3>Entry Pages</h3>
+          <h3 x-text="t('table.entryPages')"></h3>
           <table>
-            <thead><tr><th>Page</th><th>Entries</th></tr></thead>
+            <thead><tr><th x-text="t('table.page')"></th><th x-text="t('table.entries')"></th></tr></thead>
             <tbody>
               <template x-for="p in entryPages" :key="p.path">
                 <tr>
@@ -727,14 +732,14 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="entryPages.length === 0">No data yet</div>
+          <div class="empty" x-show="entryPages.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
 
         <!-- Exit Pages -->
         <div class="table-card">
-          <h3>Exit Pages</h3>
+          <h3 x-text="t('table.exitPages')"></h3>
           <table>
-            <thead><tr><th>Page</th><th>Exits</th></tr></thead>
+            <thead><tr><th x-text="t('table.page')"></th><th x-text="t('table.exits')"></th></tr></thead>
             <tbody>
               <template x-for="p in exitPages" :key="p.path">
                 <tr>
@@ -747,17 +752,17 @@
               </template>
             </tbody>
           </table>
-          <div class="empty" x-show="exitPages.length === 0">No data yet</div>
+          <div class="empty" x-show="exitPages.length === 0" x-text="t('table.noDataYet')"></div>
         </div>
       </div>
 
       <!-- Funnels -->
       <div class="funnels-section" x-show="mode === 'sites'">
         <div class="funnels-header">
-          <h3>Funnels</h3>
-          <button class="btn btn-sm" @click="showFunnelModal = true">+ Funnel</button>
+          <h3 x-text="t('funnels.title')"></h3>
+          <button class="btn btn-sm" @click="showFunnelModal = true" x-text="t('action.addFunnel')"></button>
         </div>
-        <div x-show="funnels.length === 0" class="empty">No funnels yet. Create one to track conversions.</div>
+        <div x-show="funnels.length === 0" class="empty" x-text="t('funnels.empty')"></div>
         <div class="funnels-grid">
           <template x-for="(f, fi) in funnels" :key="f.id">
             <div class="funnel-card">
@@ -765,7 +770,7 @@
                 <span class="funnel-card-name" x-text="f.name"></span>
                 <div style="display:flex;align-items:center;gap:8px">
                   <span class="funnel-overall-badge" x-text="(f.overall || 0) + '%'"></span>
-                  <button class="funnel-delete" @click="deleteFunnel(f.id)" title="Delete">&times;</button>
+                  <button class="funnel-delete" @click="deleteFunnel(f.id)" :title="t('action.delete')">&times;</button>
                 </div>
               </div>
               <div class="funnel-canvas-wrap">
@@ -780,26 +785,26 @@
       <template x-if="showFunnelModal && mode === 'sites'">
         <div class="modal-overlay" @click.self="showFunnelModal = false">
           <div class="modal" style="max-width:500px">
-            <h3>Create Funnel</h3>
-            <input type="text" x-model="newFunnelName" placeholder="Funnel name (e.g., Signup Flow)">
+            <h3 x-text="t('funnels.create')"></h3>
+            <input type="text" x-model="newFunnelName" :placeholder="t('funnels.namePlaceholder')">
             <template x-for="(step, idx) in newFunnelSteps" :key="idx">
               <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
                 <span style="font-size:12px;color:var(--text-dim);width:20px" x-text="(idx+1) + '.'"></span>
-                <input type="text" x-model="step.name" placeholder="Step name" style="flex:1;margin-bottom:0">
+                <input type="text" x-model="step.name" :placeholder="t('funnels.stepName')" style="flex:1;margin-bottom:0">
                 <select x-model="step.match_type" style="width:120px">
-                  <option value="path">Path (exact)</option>
-                  <option value="starts_with">Path (prefix)</option>
-                  <option value="event">Event</option>
-                  <option value="event_meta">Event + Meta</option>
+                  <option value="path" x-text="t('funnels.pathExact')"></option>
+                  <option value="starts_with" x-text="t('funnels.pathPrefix')"></option>
+                  <option value="event" x-text="t('funnels.event')"></option>
+                  <option value="event_meta" x-text="t('funnels.eventMeta')"></option>
                 </select>
                 <input type="text" x-model="step.match_value" :placeholder="step.match_type === 'path' ? '/about/' : step.match_type === 'starts_with' ? '/works/' : step.match_type === 'event' ? 'signup_click' : 'outbound::url::resume'" style="flex:1;margin-bottom:0">
                 <button class="btn btn-sm btn-danger" @click="newFunnelSteps.splice(idx, 1)" x-show="newFunnelSteps.length > 2">x</button>
               </div>
             </template>
-            <button class="btn btn-sm" @click="newFunnelSteps.push({name:'',match_type:'path',match_value:''})" style="margin-top:4px">+ Step</button>
+            <button class="btn btn-sm" @click="newFunnelSteps.push({name:'',match_type:'path',match_value:''})" style="margin-top:4px" x-text="t('action.addStep')"></button>
             <div class="modal-actions">
-              <button class="btn" @click="showFunnelModal = false">Cancel</button>
-              <button class="btn btn-accent" @click="createFunnel" :disabled="!newFunnelName || newFunnelSteps.some(s => !s.name || !s.match_value)">Create</button>
+              <button class="btn" @click="showFunnelModal = false" x-text="t('action.cancel')"></button>
+              <button class="btn btn-accent" @click="createFunnel" :disabled="!newFunnelName || newFunnelSteps.some(s => !s.name || !s.match_value)" x-text="t('action.create')"></button>
             </div>
           </div>
         </div>
@@ -809,16 +814,16 @@
       <template x-if="showSiteModal && mode === 'sites'">
         <div class="modal-overlay" @click.self="showSiteModal = false">
           <div class="modal">
-            <h3>Add Site</h3>
-            <input type="text" x-model="newSiteName" placeholder="Site name (e.g., My Blog)">
-            <input type="text" x-model="newSiteDomain" placeholder="Domain (e.g., myblog.com)">
+            <h3 x-text="t('site.add')"></h3>
+            <input type="text" x-model="newSiteName" :placeholder="t('site.namePlaceholder')">
+            <input type="text" x-model="newSiteDomain" :placeholder="t('site.domainPlaceholder')">
             <div class="modal-actions">
-              <button class="btn" @click="showSiteModal = false">Cancel</button>
-              <button class="btn btn-accent" @click="addSite" :disabled="!newSiteName || !newSiteDomain">Add</button>
+              <button class="btn" @click="showSiteModal = false" x-text="t('action.cancel')"></button>
+              <button class="btn btn-accent" @click="addSite" :disabled="!newSiteName || !newSiteDomain" x-text="t('action.add')"></button>
             </div>
             <template x-if="newSiteSnippet">
               <div style="margin-top:16px">
-                <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">Tracking snippet:</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" x-text="t('site.trackingSnippet')"></div>
                 <div class="snippet" x-text="newSiteSnippet"></div>
               </div>
             </template>

@@ -29,6 +29,10 @@ app.use("/api/collect", cors({ origin: "*" }));
 app.use("/api/app-collect", cors({ origin: "*" }));
 
 // Public routes
+app.get("/shared/:token", (c) => {
+  const token = encodeURIComponent(c.req.param("token"));
+  return c.redirect(`/shared/?token=${token}`, 302);
+});
 app.route("/api/collect", collectRoute);
 app.route("/api/app-collect", appCollectRoute);
 app.route("/tracker.js", trackerRoute);

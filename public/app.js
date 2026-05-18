@@ -1,5 +1,7 @@
 function app() {
   return {
+    ...window.PeeklyI18n.createState('meta.title'),
+
     // Auth
     token: localStorage.getItem('pk_token') || '',
     password: '',
@@ -46,6 +48,7 @@ function app() {
     theme: localStorage.getItem('pk_theme') || 'dark',
     currentShareToken: null,
     showFunnelModal: false,
+    _localeListenerBound: false,
     newFunnelName: '',
     newFunnelSteps: [
       { name: '', match_type: 'path', match_value: '' },
@@ -59,6 +62,17 @@ function app() {
 
     async init() {
       document.documentElement.setAttribute('data-theme', this.theme);
+      this.applyLocale();
+      if (!this._localeListenerBound) {
+        window.addEventListener('peekly:locale-change', () => {
+          this.$nextTick(() => {
+            this.renderChart();
+            this.renderSparklines();
+            this.renderAppOpsTrend();
+          });
+        });
+        this._localeListenerBound = true;
+      }
       if (this.period === 'custom') this.ensureCustomRange();
       if (this.token) {
         await Promise.all([this.fetchSites(), this.fetchApps()]);
@@ -140,7 +154,7 @@ function app() {
         });
         const data = await res.json();
         if (!res.ok) {
-          this.loginError = data.error || 'Login failed';
+          this.loginError = data.error ? this.tx(data.error) : this.t('auth.loginFailed');
           return;
         }
         this.token = data.token;
@@ -148,7 +162,7 @@ function app() {
         this.password = '';
         await this.init();
       } catch (e) {
-        this.loginError = 'Connection error';
+        this.loginError = this.t('auth.connectionError');
       } finally {
         this.loggingIn = false;
       }
@@ -232,7 +246,7 @@ function app() {
         if (res.status === 401) { this.logout(); return; }
         const data = await res.json();
         if (!res.ok) {
-          this.appOpsError = data.error || 'Failed to load App Ops';
+          this.appOpsError = data.error ? this.tx(data.error) : this.t('status.failedAppOps');
           return;
         }
         this.appOverview = data;
@@ -240,7 +254,7 @@ function app() {
         localStorage.setItem('pk_app_ops_last_synced_at', this.appOpsLastSyncedAt);
         this.$nextTick(() => this.renderAppOpsTrend());
       } catch (e) {
-        this.appOpsError = 'Connection error';
+        this.appOpsError = this.t('auth.connectionError');
       } finally {
         this.appOpsLoading = false;
       }
@@ -259,12 +273,12 @@ function app() {
         if (res.status === 401) { this.logout(); return; }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          this.appOpsError = data.error || 'Failed to sync provider snapshot';
+          this.appOpsError = data.error ? this.tx(data.error) : this.t('status.failedProviderSnapshot');
           return;
         }
         await this.fetchAppOverview();
       } catch (e) {
-        this.appOpsError = 'Connection error';
+        this.appOpsError = this.t('auth.connectionError');
       } finally {
         this.providerSnapshotLoading = false;
       }
@@ -443,7 +457,7 @@ function app() {
           ctx.fillStyle = 'rgba(255,255,255,0.3)';
           ctx.fillText('100%', w - padX, textY);
         } else {
-          ctx.fillStyle = steps[i].conversion < 50 ? 'rgba(239,68,68,0.85)' : 'rgba(255,255,255,0.45)';
+          ctx.fillStyle = steps[i].conversion < 50 ? this.colorWithAlpha('--danger', 0.85) : this.colorWithAlpha('--text', 0.45);
           ctx.fillText(steps[i].conversion + '%', w - padX, textY);
         }
         ctx.restore();
@@ -596,6 +610,25 @@ function app() {
 
     cssVar(name) {
       return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    },
+
+    colorWithAlpha(name, alpha) {
+      const color = this.cssVar(name);
+      if (color.startsWith('#')) {
+        const hex = color.slice(1);
+        const full = hex.length === 3 ? hex.split('').map(ch => ch + ch).join('') : hex;
+        const value = Number.parseInt(full, 16);
+        if (Number.isFinite(value)) {
+          const r = (value >> 16) & 255;
+          const g = (value >> 8) & 255;
+          const b = value & 255;
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+      }
+      if (color.startsWith('rgb(')) {
+        return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+      }
+      return color;
     },
 
     // Sparkline rendering
@@ -809,7 +842,7 @@ function app() {
       const gridColor = this.cssVar('--chart-grid');
       const labelColor = this.cssVar('--chart-label');
       const accentColor = this.cssVar('--sparkline');
-      const warnColor = '#f59e0b';
+      const warnColor = this.cssVar('--warning');
 
       ctx.clearRect(0, 0, w, h);
       ctx.strokeStyle = gridColor;
@@ -838,7 +871,7 @@ function app() {
 
       drawLine('jobs', accentColor, maxJobs);
       drawLine('failed', warnColor, maxJobs);
-      drawLine('acked', '#22c55e', maxAcked);
+      drawLine('acked', this.cssVar('--success'), maxAcked);
 
       ctx.fillStyle = labelColor;
       ctx.font = '10px -apple-system, sans-serif';
@@ -1489,8 +1522,8 @@ function app() {
       const item = this.appOverview?.growth?.recommendations?.[0];
       if (item) return item;
       return {
-        title: 'Keep monitoring the funnel',
-        body: 'Revenue, conversion, and cost are inside the configured targets for this window.',
+        title: this.t('ops.keepMonitoring', null),
+        body: this.t('ops.keepMonitoringBody', null),
       };
     },
 
@@ -1503,43 +1536,49 @@ function app() {
 
     bottleneckTitle() {
       const step = this.bottleneckStep();
-      return step ? step.label : 'Funnel is on target';
+      return step ? this.tx(step.label) : this.tx('Funnel is on target');
     },
 
     bottleneckBody() {
       const step = this.bottleneckStep();
-      if (!step) return 'No step is materially behind target in the selected window.';
+      if (!step) return this.tx('No step is materially behind target in the selected window.');
       const gap = this.fmt(step.count_gap);
       if (step.actual_rate == null || step.target_rate == null) {
-        return `${this.fmt(step.actual_count)} actual vs ${this.fmt(step.target_count)} target. You need ${gap} more qualified entries in this window.`;
+        return this.locale === 'zh'
+          ? `${this.fmt(step.actual_count)} 实际 / ${this.fmt(step.target_count)} 目标。本窗口还需要 ${gap} 个合格入口。`
+          : `${this.fmt(step.actual_count)} actual vs ${this.fmt(step.target_count)} target. You need ${gap} more qualified entries in this window.`;
       }
-      return `${this.fmtRate(step.actual_rate)} actual vs ${this.fmtRate(step.target_rate)} target, with a ${gap} user gap. Fix this step before buying more traffic.`;
+      return this.locale === 'zh'
+        ? `实际 ${this.fmtRate(step.actual_rate)} / 目标 ${this.fmtRate(step.target_rate)}，用户缺口 ${gap}。先修复这一步，再购买更多流量。`
+        : `${this.fmtRate(step.actual_rate)} actual vs ${this.fmtRate(step.target_rate)} target, with a ${gap} user gap. Fix this step before buying more traffic.`;
     },
 
     costRiskTitle() {
       const growth = this.appOverview?.growth;
       const ledger = this.appOverview?.ledger;
       const env = this.appOverview?.environment;
-      if (!growth) return 'Cost data is unavailable';
+      if (!growth) return this.tx('Cost data is unavailable');
       if (growth.costs.actual_free_trial_cost_cny > 0 && growth.revenue.estimated_period_sales_cny === 0) {
-        return 'Trial spend has no payback yet';
+        return this.tx('Trial spend has no payback yet');
       }
       if (growth.costs.estimated_period_contribution_cny < 0) {
-        return 'Contribution is negative';
+        return this.tx('Contribution is negative');
       }
       if (ledger?.system?.burn_cost_disabled) {
-        return 'Provider spend is closed';
+        return this.tx('Provider spend is closed');
       }
       if (env && !env.is_production) {
-        return 'Sandbox spend is open';
+        return this.tx('Sandbox spend is open');
       }
-      return 'Cost is inside guardrails';
+      return this.tx('Cost is inside guardrails');
     },
 
     costRiskBody() {
       const growth = this.appOverview?.growth;
-      if (!growth) return 'Connect growth and ledger data before making spend decisions.';
-      return `Trial ${this.fmtCny(growth.costs.actual_free_trial_cost_cny)} · paid AI ${this.fmtCny(growth.costs.actual_paid_ai_cost_cny)} · contribution ${this.fmtCny(growth.costs.estimated_period_contribution_cny)}.`;
+      if (!growth) return this.tx('Connect growth and ledger data before making spend decisions.');
+      return this.locale === 'zh'
+        ? `试用 ${this.fmtCny(growth.costs.actual_free_trial_cost_cny)} · 付费 AI ${this.fmtCny(growth.costs.actual_paid_ai_cost_cny)} · 贡献 ${this.fmtCny(growth.costs.estimated_period_contribution_cny)}。`
+        : `Trial ${this.fmtCny(growth.costs.actual_free_trial_cost_cny)} · paid AI ${this.fmtCny(growth.costs.actual_paid_ai_cost_cny)} · contribution ${this.fmtCny(growth.costs.estimated_period_contribution_cny)}.`;
     },
 
     funnelActual(stepId) {
@@ -1564,7 +1603,7 @@ function app() {
       const start = new Date(range.start * 1000);
       const end = new Date(range.end * 1000);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return this.period;
-      return `${start.toLocaleDateString()}-${end.toLocaleDateString()}`;
+      return `${start.toLocaleDateString(this.dateLocale())}-${end.toLocaleDateString(this.dateLocale())}`;
     },
 
     progressPercent(numerator, denominator) {
@@ -1594,7 +1633,7 @@ function app() {
 
     volumeGapLabel(step) {
       const gap = Number(step?.count_gap) || 0;
-      return gap > 0 ? `${this.fmt(gap)} short` : 'On target';
+      return gap > 0 ? this.t('progress.short', { count: this.fmt(gap) }) : this.t('progress.onTarget');
     },
 
     previousFunnelStep(index) {
@@ -1628,14 +1667,14 @@ function app() {
 
     conversionProgressLabel(step, index) {
       const previous = this.previousFunnelStep(index);
-      if (!previous) return 'Entry step';
+      if (!previous) return this.t('progress.entryStep');
       const previousActual = Number(previous.actual_count) || 0;
       const actualCount = Number(step?.actual_count) || 0;
       if (previousActual <= 0 && actualCount > 0) {
-        return `Tracking gap · ${this.fmt(actualCount)} / 0`;
+        return this.t('progress.trackingGap', { actual: this.fmt(actualCount) });
       }
       if (previousActual <= 0) {
-        return 'No upstream users';
+        return this.t('progress.noUpstream');
       }
       const progress = this.conversionProgressPercent(step, index);
       return `${this.fmtRate(step?.actual_rate)} / ${this.fmtRate(step?.target_rate)} · ${this.fmtRate(progress)}`;
@@ -1643,27 +1682,27 @@ function app() {
 
     fmt(n) {
       if (n == null) return '0';
-      return Number(n).toLocaleString();
+      return Number(n).toLocaleString(this.numberLocale());
     },
 
     fmtDuration(sec) {
       if (!sec || sec === 0) return '0s';
       sec = Math.round(Number(sec));
-      if (sec < 60) return sec + 's';
+      if (sec < 60) return this.locale === 'zh' ? sec + '秒' : sec + 's';
       const m = Math.floor(sec / 60);
       const s = sec % 60;
-      return m + 'm ' + s + 's';
+      return this.locale === 'zh' ? m + '分 ' + s + '秒' : m + 'm ' + s + 's';
     },
 
     fmtMaybe(n, suffix) {
       if (n == null || Number.isNaN(Number(n))) return '—';
-      return Number(n).toLocaleString() + (suffix || '');
+      return Number(n).toLocaleString(this.numberLocale()) + (suffix || '');
     },
 
     fmtCny(n, digits) {
       if (n == null || Number.isNaN(Number(n))) return '—';
       const maximumFractionDigits = digits == null ? 0 : digits;
-      return '¥' + Number(n).toLocaleString(undefined, { maximumFractionDigits });
+      return '¥' + Number(n).toLocaleString(this.numberLocale(), { maximumFractionDigits });
     },
 
     fmtRate(n) {
@@ -1675,14 +1714,14 @@ function app() {
       if (!iso) return '—';
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return '—';
-      return d.toLocaleString();
+      return d.toLocaleString(this.dateLocale());
     },
 
     fmtSyncTime(iso) {
       if (!iso) return '—';
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return '—';
-      return d.toLocaleString(undefined, {
+      return d.toLocaleString(this.dateLocale(), {
         month: 'numeric',
         day: 'numeric',
         hour: '2-digit',
@@ -1691,11 +1730,11 @@ function app() {
     },
 
     fmtProviderWindow(row) {
-      if (!row || !row.window_start || !row.window_end || row.window_start === row.window_end) return 'snapshot';
+      if (!row || !row.window_start || !row.window_end || row.window_start === row.window_end) return this.tx('snapshot');
       const start = new Date(row.window_start * 1000);
       const end = new Date(row.window_end * 1000);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'snapshot';
-      return `${start.toLocaleDateString()}-${end.toLocaleDateString()}`;
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return this.tx('snapshot');
+      return `${start.toLocaleDateString(this.dateLocale())}-${end.toLocaleDateString(this.dateLocale())}`;
     },
 
     statusClass(status) {
@@ -1718,8 +1757,16 @@ function app() {
     },
 
     burnCostLabel(value) {
-      if (value == null) return 'unknown';
-      return value ? 'closed' : 'open';
+      if (value == null) return this.t('cost.unknown');
+      return value ? this.t('cost.closed') : this.t('cost.open');
+    },
+
+    numberLocale() {
+      return this.locale === 'zh' ? 'zh-CN' : 'en-US';
+    },
+
+    dateLocale() {
+      return this.locale === 'zh' ? 'zh-CN' : 'en-US';
     },
 
     fmtDelta(val) {
